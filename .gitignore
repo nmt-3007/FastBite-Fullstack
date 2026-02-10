@@ -1,0 +1,16 @@
+# --- PHẦN FRONTEND (AnFoodWeb) ---
+node_modules/
+dist/
+.env.local
+
+# --- PHẦN BACKEND (AnFoodAPI) ---
+[Bb]in/
+[Oo]bj/
+.vs/
+.vscode/
+appsettings.Development.json
+*.user
+
+# --- FILE RÁC KHÁC ---
+.DS_Store
+Thumbs.db
