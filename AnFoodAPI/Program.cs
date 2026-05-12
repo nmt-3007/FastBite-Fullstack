@@ -10,9 +10,12 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 
 // ==========================================
-// 1. CẤU HÌNH DATABASE (ĐỌC TỪ APPSETTINGS.JSON HOẶC BIẾN MÔI TRƯỜNG RAILWAY)
+// 1. CẤU HÌNH DATABASE (ƯU TIÊN BIẾN MÔI TRƯỜNG)
 // ==========================================
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+// Sử dụng toán tử ?? để ưu tiên lấy DB_CONNECTION từ Railway trước, 
+// nếu không thấy sẽ lấy DefaultConnection trong appsettings.json
+var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION") 
+                       ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
 builder.Services.AddDbContext<AnshopDbContext>(options =>
     options.UseMySql(
@@ -56,7 +59,7 @@ builder.Services.AddAuthentication(options =>
 });
 
 // ==========================================
-// 4. CẤU HÌNH CORS (ĐÃ MỞ KHÓA)
+// 4. CẤU HÌNH CORS (MỞ KHÓA CHO FRONTEND)
 // ==========================================
 builder.Services.AddCors(options =>
 {
@@ -76,7 +79,7 @@ builder.Services.AddControllers()
     });
 
 // ==========================================
-// 5. CẤU HÌNH SWAGGER 
+// 5. CẤU HÌNH SWAGGER (TÀI LIỆU API)
 // ==========================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -109,37 +112,31 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddHttpClient<IWeatherService, WeatherService>();
 
 // ==========================================
-// 6. KHỞI CHẠY APP
+// 6. KHỞI CHẠY ỨNG DỤNG
 // ==========================================
 var app = builder.Build();
 
-// ==========================================
-// 🚀 TỰ ĐỘNG UPDATE DATABASE KHI CHẠY (CHUẨN PRODUCTION)
-// ==========================================
+// --- TỰ ĐỘNG UPDATE DATABASE KHI STARTUP ---
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     try
     {
         var context = services.GetRequiredService<AnshopDbContext>();
-        // Lệnh này sẽ tự động kết nối vào MySQL trên Railway và tạo toàn bộ bảng!
         context.Database.Migrate(); 
     }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Lỗi nghiêm trọng khi tự động tạo Database: {Message}", ex.Message);
+        logger.LogError(ex, "Lỗi khi tự động Migrate Database: {Message}", ex.Message);
     }
 }
-// ==========================================
+// ------------------------------------------
 
-// Đã đưa Swagger ra ngoài if để khi Deploy lên mạng vẫn dùng được
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseStaticFiles();
-
-// Kích hoạt CORS
 app.UseCors("AllowReact");
 
 app.UseAuthentication(); 
