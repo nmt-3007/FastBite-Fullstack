@@ -278,5 +278,39 @@ namespace AnFoodAPI.Controllers
             await _context.SaveChangesAsync();
             return Ok(new { message = "Đã khôi phục thành công!" });
         }
+
+        // =============================================================
+        // 🚨 HÀM KHÁM TỔNG QUÁT (X-RAY) TÌM LỖI 500
+        // =============================================================
+        [HttpGet("XRay")]
+        public async Task<IActionResult> XRay()
+        {
+            var chuoiKetNoi = _context.Database.GetConnectionString();
+            try
+            {
+                // Thử ép hệ thống mở cửa vào Database
+                await _context.Database.OpenConnectionAsync();
+                await _context.Database.CloseConnectionAsync();
+
+                return Ok(new 
+                { 
+                    TrangThai = "🟢 XANH MƯỢT - ĐÃ THÔNG MẠNG DATABASE TỚI TẬN CÙNG!",
+                    ChuoiKetNoiDangDung = chuoiKetNoi,
+                    LoiKhuyen = "Database đã kết nối tốt. Nếu các hàm khác lỗi thì 100% là do Logic Code, không phải do mạng."
+                });
+            }
+            catch (Exception ex)
+            {
+                // Nếu văng lỗi, bắt nó ói ra hết nguyên nhân
+                return StatusCode(500, new 
+                { 
+                    TrangThai = "🔴 ĐỎ LÒM - ĐỨT CÁP DATABASE!",
+                    LoiChinh = ex.Message,
+                    LoiPhu = ex.InnerException?.Message,
+                    ChuoiKetNoiDangDung = chuoiKetNoi,
+                    NguyenNhan = chuoiKetNoi.Contains("localhost") ? "Railway chưa nhận được biến môi trường (Variables)" : "Chuỗi kết nối đúng nhưng bị chặn mạng hoặc sai Pass."
+                });
+            }
+        }
     }
 }
