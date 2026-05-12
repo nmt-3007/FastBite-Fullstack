@@ -1,25 +1,22 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { toast } from 'react-toastify';
 
-// ✅ IMPORT CHUẨN TỪ HỆ THỐNG
 import axiosClient from '../../api/axiosClient'; 
-import { getImageUrl } from '../../utils/imageHelper';
+import ProductCard from '../../components/ProductCard';
 
 import { 
-  FaShoppingCart, FaStar, FaSearch, FaEye, 
-  FaHamburger, FaPizzaSlice, FaDrumstickBite, FaMugHot, FaBoxOpen, FaUtensils, FaCookieBite,
-  FaSortAmountDown, FaTag, FaCheckCircle
+  FaSearch, FaHamburger, FaPizzaSlice, FaDrumstickBite, 
+  FaMugHot, FaBoxOpen, FaUtensils, FaCookieBite, FaSortAmountDown
 } from 'react-icons/fa';
 
 function Menu({ addToCart }) {
-  // --- 1. STATE QUẢN LÝ DỮ LIỆU ---
   const [foods, setFoods] = useState([]);
   const [categories, setCategories] = useState([]); 
   const [banners, setBanners] = useState([]); 
   const [loading, setLoading] = useState(true);
   
-  // --- 2. STATE BỘ LỌC & TÌM KIẾM ---
   const [searchTerm, setSearchTerm] = useState(''); 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [sortOption, setSortOption] = useState('default'); 
@@ -28,7 +25,6 @@ function Menu({ addToCart }) {
   const ITEMS_PER_PAGE = 12; 
   const location = useLocation();
 
-  // Helper Icon
   const getCategoryIcon = (name) => {
     const lowerName = name?.toLowerCase() || '';
     if (lowerName.includes('burger')) return <FaHamburger />;
@@ -40,15 +36,15 @@ function Menu({ addToCart }) {
     return <FaUtensils />; 
   };
 
-  // --- 3. FETCH DỮ LIỆU ---
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
+        // 👉 ĐÃ XÓA GỌI API /DanhGia DƯ THỪA
         const [foodRes, catRes, bannerRes] = await Promise.all([
             axiosClient.get('/MonAn'),
             axiosClient.get('/DanhMuc'),
-            axiosClient.get('/QuangCao/Active') 
+            axiosClient.get('/QuangCao/Active')
         ]);
         
         setFoods(Array.isArray(foodRes) ? foodRes : []);
@@ -76,7 +72,6 @@ function Menu({ addToCart }) {
     fetchData();
   }, []);
 
-  // Xử lý URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const catIdFromUrl = params.get('category');
@@ -88,14 +83,13 @@ function Menu({ addToCart }) {
     }
   }, [location.search]);
 
-  // --- 4. LOGIC TÍNH GIÁ KHUYẾN MÃI (CHUẨN HÓA) ---
   const getPriceInfo = (item) => {
     if (!item) return { isSale: false, finalPrice: 0, originalPrice: 0, percent: 0 };
     const safeBanners = Array.isArray(banners) ? banners : [];
 
     const itemId = Number(item.maMon || item.MaMon);
     const itemCatId = Number(item.maDanhMuc || item.MaDanhMuc);
-    const originalPrice = Number(item.gia || item.Gia || 0);
+    const originalPrice = Number(item.giaBan || item.gia || 0);
 
     const itemBanner = safeBanners.find(b => Number(b.maMon) === itemId && Number(b.phanTramGiam) > 0);
     const categoryBanner = safeBanners.find(b => {
@@ -120,7 +114,8 @@ function Menu({ addToCart }) {
     return { isSale: false, originalPrice: originalPrice, finalPrice: originalPrice, percent: 0 };
   };
 
-  // --- 5. LOGIC LỌC VÀ SẮP XẾP ---
+  // 👉 ĐÃ XÓA HÀM getAverageRating Ở ĐÂY
+
   const filteredFoods = useMemo(() => {
     if (!Array.isArray(foods)) return [];
 
@@ -132,7 +127,6 @@ function Menu({ addToCart }) {
       return matchesSearch && matchesCategory;
     });
 
-    // Sắp xếp
     if (sortOption === 'price-asc') {
         result.sort((a, b) => getPriceInfo(a).finalPrice - getPriceInfo(b).finalPrice);
     } else if (sortOption === 'price-desc') {
@@ -142,18 +136,17 @@ function Menu({ addToCart }) {
     } else if (sortOption === 'name-desc') {
         result.sort((a, b) => (b.tenMon || '').localeCompare(a.tenMon || ''));
     } else if (sortOption === 'best-seller') {
-        // 🔥 Sắp xếp theo số lượng bán thật (daBan hoặc da_ban)
         result.sort((a, b) => {
-            const soldA = a.daBan || a.da_ban || 0;
-            const soldB = b.daBan || b.da_ban || 0;
+            const soldA = a.DaBan || a.daBan || a.da_ban || 0;
+            const soldB = b.DaBan || b.daBan || b.da_ban || 0;
             return soldB - soldA;
         });
     }
 
     return result;
+    // 👉 Đã xóa dependency reviews để tránh render lại thừa thãi
   }, [foods, searchTerm, selectedCategory, sortOption, banners]); 
 
-  // Reset trang
   useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedCategory, sortOption]);
 
   const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
@@ -167,15 +160,8 @@ function Menu({ addToCart }) {
   };
 
   const handleAddToCart = (item) => {
-      const priceInfo = getPriceInfo(item);
-      const itemToAdd = { 
-          ...item, 
-          gia: priceInfo.finalPrice,
-          originalPrice: priceInfo.originalPrice,
-          isSale: priceInfo.isSale,
-          salePercent: priceInfo.percent
-      };
-      addToCart(itemToAdd);
+    addToCart({...item, soLuong: 1});
+    toast.success(`Đã thêm ${item.tenMon} vào giỏ hàng!`);
   };
 
   return (
@@ -208,7 +194,7 @@ function Menu({ addToCart }) {
                <FaSortAmountDown style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)', color: '#e64a19', zIndex: 10 }} />
                <select value={sortOption} onChange={(e) => setSortOption(e.target.value)} style={{ width: '100%', height: '55px', padding: '0 35px 0 55px', borderRadius: '50px', border: '1px solid #dfe6e9', fontSize: '0.95rem', outline: 'none', appearance: 'none', cursor: 'pointer', backgroundColor: '#fff', fontWeight: '600' }}>
                   <option value="default">Sắp xếp mặc định</option>
-                  <option value="best-seller">🔥 Bán chạy nhất</option> {/* Thêm option mới */}
+                  <option value="best-seller">🔥 Bán chạy nhất</option>
                   <option value="price-asc">Giá: Thấp đến Cao</option>
                   <option value="price-desc">Giá: Cao đến Thấp</option>
                   <option value="name-asc">Tên: A - Z</option>
@@ -247,77 +233,24 @@ function Menu({ addToCart }) {
           <div style={{ textAlign: 'center', padding: '100px' }}><div className="loader">Đang chuẩn bị món ăn ngon...</div></div>
         ) : (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '30px' }}>
+            {/* 👉 ĐÃ SỬA GRID minmax THÀNH 250px ĐỂ ĐẢM BẢO 4 THẺ / HÀNG */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '30px' }}>
               {currentItems.map((item) => {
                 const priceInfo = getPriceInfo(item); 
-                // Lấy số lượng đã bán thật từ DB (daBan hoặc da_ban), nếu không có thì = 0
-                const soldCount = item.daBan || item.da_ban || 0;
 
                 return (
-                    <motion.div key={item.maMon} layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} style={{ backgroundColor: '#fff', borderRadius: '20px', boxShadow: '0 10px 20px rgba(0,0,0,0.05)', overflow: 'hidden', height: '480px', display: 'flex', flexDirection: 'column', position:'relative' }} whileHover={{ y: -10, boxShadow: '0 20px 40px rgba(0,0,0,0.1)' }}>
-                    
-                    {/* Tem Sale */}
-                    {priceInfo.isSale && (
-                        <div style={{
-                            position: 'absolute', top: '15px', right: '15px', background: '#d63031', color: '#fff', 
-                            padding: '5px 12px', borderRadius: '30px', fontWeight: 'bold', fontSize: '0.95rem', zIndex: 10, display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 4px 10px rgba(214, 48, 49, 0.4)'
-                        }}>
-                            <FaTag size={12}/> -{priceInfo.percent}%
-                        </div>
-                    )}
-
-                    {/* Ảnh Sản Phẩm */}
-                    <div style={{ height: '280px', position: 'relative' }}>
-                        <img 
-                            src={getImageUrl(item.hinhAnh)} 
-                            alt={item.tenMon} 
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                            onError={(e) => { e.target.src = 'https://placehold.co/400x300?text=No+Image'; }} 
+                    <div key={item.maMon || item.MaMon}>
+                        <ProductCard 
+                            item={item}
+                            priceInfo={priceInfo}
+                            // 👉 TRUYỀN THẲNG ĐIỂM SỐ TỪ BACKEND
+                            rating={item.diemDanhGia || item.DiemDanhGia || 0}
+                            onAddToCart={(e, itemToCart) => {
+                                e.preventDefault();
+                                handleAddToCart(itemToCart);
+                            }}
                         />
-                        <motion.div initial={{ opacity: 0 }} whileHover={{ opacity: 1 }} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Link to={`/product-detail/${item.maMon}`}>
-                            <button style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '50%', color: '#2d3436', border: 'none', cursor: 'pointer', display: 'flex' }}><FaEye size={22} /></button>
-                        </Link>
-                        </motion.div>
                     </div>
-
-                    {/* Thông tin */}
-                    <div style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <h3 style={{ fontSize: '1.2rem', margin: '0', color: '#2d3436', fontWeight: '700', lineHeight: '1.4' }}>{item.tenMon}</h3>
-                            </div>
-                            
-                            {/* 🔥 HIỂN THỊ SỐ LIỆU THẬT THAY VÌ ĐÁNH GIÁ ẢO 🔥 */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop:'5px', fontSize: '0.9rem', color: '#636e72' }}>
-                                {soldCount > 0 ? (
-                                    <span style={{ color: '#00b894', display:'flex', alignItems:'center', gap:'5px', fontWeight:'600' }}>
-                                        <FaCheckCircle size={12}/> Đã bán {soldCount}
-                                    </span>
-                                ) : (
-                                    <span style={{ color: '#ffa502', display:'flex', alignItems:'center', gap:'5px' }}>
-                                        <FaStar size={12}/> Món mới
-                                    </span>
-                                )}
-                            </div>
-                            
-                            <div style={{ marginTop: '10px' }}>
-                                {priceInfo.isSale ? (
-                                    <div style={{display:'flex', alignItems:'center', gap:'12px'}}>
-                                        <span style={{ color: '#d63031', fontSize: '1.5rem', fontWeight: '800' }}>{priceInfo.finalPrice.toLocaleString()} đ</span>
-                                        <span style={{ color: '#b2bec3', fontSize: '1.1rem', textDecoration: 'line-through', fontWeight: '500' }}>{priceInfo.originalPrice.toLocaleString()} đ</span>
-                                    </div>
-                                ) : (
-                                    <p style={{ color: '#e64a19', fontSize: '1.4rem', fontWeight: '800', margin: 0 }}>{item.gia?.toLocaleString()} đ</p>
-                                )}
-                            </div>
-                        </div>
-
-                        <motion.button onClick={() => handleAddToCart(item)} whileTap={{ scale: 0.95 }} style={{ width: '100%', padding: '15px', backgroundColor: '#e64a19', color: '#fff', border: 'none', borderRadius: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', boxShadow: '0 4px 15px rgba(230, 74, 25, 0.2)' }}>
-                        <FaShoppingCart /> ĐẶT MÓN NGAY
-                        </motion.button>
-                    </div>
-                    </motion.div>
                 );
               })}
             </div>

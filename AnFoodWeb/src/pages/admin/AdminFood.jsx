@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { toast, ToastContainer } from 'react-toastify';
 import { 
   FaTrash, FaPlus, FaUtensils, FaEdit, FaSave, 
-  FaSync, FaCloudUploadAlt, FaSpinner, FaImage, FaUndo, FaBan
+  FaSync, FaCloudUploadAlt, FaSpinner, FaImage, FaUndo, FaBan, FaBox
 } from 'react-icons/fa';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -21,7 +21,7 @@ function AdminFood() {
   
   const [formData, setFormData] = useState({
     tenMon: '',
-    gia: '',
+    giaBan: '', 
     moTa: '',
     maDanhMuc: '',
     hinhAnh: null
@@ -81,12 +81,13 @@ function AdminFood() {
           ...item,
           maMon: item.maMon || item.MaMon || item.id,
           tenMon: item.tenMon || item.TenMon,
-          gia: item.gia || item.Gia || 0,
+          giaBan: item.GiaBan || item.giaBan || 0, 
+          soLuong: item.SoLuong || item.soLuong || item.so_luong || 0, 
           maDanhMuc: catId,
           tenDanhMuc: catName,
           hinhAnh: item.hinhAnh || item.HinhAnh,
           moTa: item.moTa || item.MoTa || '',
-          isDeleted: item.isDeleted || item.IsDeleted || false // Nhận trạng thái xóa
+          isDeleted: item.isDeleted || item.IsDeleted || false 
         };
       });
 
@@ -113,7 +114,7 @@ function AdminFood() {
     
     setFormData({
       tenMon: item.tenMon,
-      gia: item.gia,
+      giaBan: item.giaBan, 
       moTa: item.moTa || '',
       maDanhMuc: item.maDanhMuc, 
       hinhAnh: null 
@@ -129,26 +130,25 @@ function AdminFood() {
     setPreviewImage(null);
     setFormData({
       tenMon: '',
-      gia: '',
+      giaBan: '',
       moTa: '',
       maDanhMuc: categories.length > 0 ? categories[0].maDanhMuc : '',
       hinhAnh: null
     });
-    const fileInput = document.getElementById("fileInput");
-    if(fileInput) fileInput.value = "";
+    if(document.getElementById("fileInput")) document.getElementById("fileInput").value = "";
   };
 
   // --- 4. GỬI DỮ LIỆU ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.tenMon.trim()) return toast.warning("Tên món không được để trống!");
-    if (formData.gia <= 0) return toast.warning("Giá bán phải lớn hơn 0!");
+    if (Number(formData.giaBan) <= 0) return toast.warning("Giá bán phải lớn hơn 0!");
 
     setIsLoading(true);
     
     const data = new FormData();
     data.append('tenMon', formData.tenMon);
-    data.append('gia', formData.gia);
+    data.append('giaBan', formData.giaBan); 
     data.append('moTa', formData.moTa);
     data.append('maDanhMuc', formData.maDanhMuc);
     if (formData.hinhAnh) {
@@ -165,230 +165,152 @@ function AdminFood() {
       } else {
         await axiosAdmin.post('/MonAn', data, config);
         toast.success("🎉 Thêm món mới thành công!");
-        
-        setFormData(prev => ({ 
-            tenMon: '', gia: '', moTa: '', hinhAnh: null, 
-            maDanhMuc: prev.maDanhMuc 
-        }));
-        setPreviewImage(null);
-        document.getElementById("fileInput").value = ""; 
+        handleCancelEdit();
       }
       fetchFoods(); 
     } catch (err) {
-      console.error(err);
-      const msg = err.response?.data?.message || "Lỗi xử lý API!";
-      toast.error("❌ " + msg);
+      toast.error("❌ " + (err.response?.data?.message || "Lỗi xử lý API!"));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Xóa món (Soft Delete)
   const handleDelete = async (id) => {
-    if (window.confirm("⚠️ Bạn có chắc chắn muốn NGỪNG KINH DOANH món này? (Có thể khôi phục sau)")) {
+    if (window.confirm("⚠️ Bạn có chắc muốn NGỪNG KINH DOANH món này?")) {
       try {
         await axiosAdmin.delete(`/MonAn/${id}`);
         toast.success("🗑️ Đã ngừng kinh doanh món ăn!");
         fetchFoods();
-      } catch (err) {
-        toast.error("❌ Lỗi xóa: " + (err.response?.data?.message || err.message));
-      }
+      } catch (err) { toast.error("❌ Lỗi xóa!"); }
     }
   };
 
-  // Khôi phục món (Restore)
   const handleRestore = async (id) => {
     if (window.confirm("♻️ Bạn muốn khôi phục món ăn này để bán lại?")) {
         try {
             await axiosAdmin.put(`/MonAn/Restore/${id}`);
             toast.success("✅ Đã khôi phục món ăn!");
             fetchFoods();
-        } catch (err) {
-            toast.error("❌ Lỗi khôi phục: " + (err.response?.data?.message || err.message));
-        }
+        } catch (err) { toast.error("❌ Lỗi khôi phục!"); }
     }
   };
 
   const inputStyle = { padding: '12px', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem', width: '100%', outline: 'none' };
 
   return (
-    <div style={{ padding: '30px', background: '#f4f6f9', minHeight: '100vh', fontFamily: '"Poppins", sans-serif' }}>
+    <div style={{ padding: '0 0 50px 0', fontFamily: '"Poppins", sans-serif' }}>
       <ToastContainer position="top-right" autoClose={2500} theme="colored"/>
       
       <div className="grid-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(350px, 1fr) 2fr', gap: '30px', maxWidth: '1600px', margin: '0 auto' }}>
         
-        {/* === FORM BÊN TRÁI === */}
-        <div style={{ background: '#fff', padding: '25px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', height: 'fit-content', position: 'sticky', top: '20px' }}>
-          <h3 style={{ marginBottom: '20px', color: isEditing ? '#007bff' : '#28a745', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '2px solid #f1f1f1', paddingBottom: '15px' }}>
-            {isEditing ? <><FaEdit /> Cập Nhật Món</> : <><FaPlus /> Thêm Món Mới</>}
-          </h3>
-          
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {/* ... Form inputs giữ nguyên ... */}
-            <div>
-              <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Tên món <span style={{color:'red'}}>*</span></label>
-              <input type="text" name="tenMon" value={formData.tenMon} onChange={handleChange} required style={inputStyle} placeholder="Ví dụ: Burger Bò Mỹ..." />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+        {/* 🔥 BÍ KÍP Ở ĐÂY: Thẻ div ngoài cùng làm "Đường ray", thẻ bên trong trượt (sticky) 🔥 */}
+        <div style={{ height: '100%' }}>
+          <div style={{ background: '#fff', padding: '25px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', position: 'sticky', top: '0', zIndex: 20 }}>
+            <h3 style={{ marginBottom: '20px', color: isEditing ? '#007bff' : '#28a745', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '2px solid #f1f1f1', paddingBottom: '15px' }}>
+              {isEditing ? <><FaEdit /> Cập Nhật Món</> : <><FaPlus /> Thêm Món Mới</>}
+            </h3>
+            
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div>
-                <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Giá bán (VNĐ) <span style={{color:'red'}}>*</span></label>
-                <input type="number" name="gia" value={formData.gia} onChange={handleChange} required style={inputStyle} placeholder="0" min="0" />
+                <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Tên món *</label>
+                <input type="text" name="tenMon" value={formData.tenMon} onChange={handleChange} required style={inputStyle} placeholder="Ví dụ: Burger Bò Mỹ..." />
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div>
+                  <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Giá bán (VNĐ) *</label>
+                  <input type="number" name="giaBan" value={formData.giaBan} onChange={handleChange} required style={inputStyle} placeholder="0" min="0" />
+                </div>
+                <div>
+                  <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Danh mục</label>
+                  <select name="maDanhMuc" value={formData.maDanhMuc} onChange={handleChange} style={inputStyle}>
+                    {categories.map(cat => (
+                      <option key={cat.maDanhMuc} value={cat.maDanhMuc}>{cat.tenDanhMuc}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Danh mục</label>
-                <select name="maDanhMuc" value={formData.maDanhMuc} onChange={handleChange} style={inputStyle}>
-                  {categories.map(cat => (
-                    <option key={cat.maDanhMuc} value={cat.maDanhMuc}>{cat.tenDanhMuc}</option>
-                  ))}
-                </select>
+                <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Mô tả</label>
+                <textarea name="moTa" value={formData.moTa} onChange={handleChange} rows="3" style={{...inputStyle, resize: 'vertical'}} placeholder="Mô tả thành phần..." />
               </div>
-            </div>
 
-            <div>
-              <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Mô tả</label>
-              <textarea name="moTa" value={formData.moTa} onChange={handleChange} rows="3" style={{...inputStyle, resize: 'vertical'}} placeholder="Mô tả thành phần..." />
-            </div>
-
-            {/* KHUNG UPLOAD ẢNH */}
-            <div>
-              <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Hình ảnh</label>
-              <div 
-                onClick={() => document.getElementById('fileInput').click()}
-                style={{ 
-                  border: '2px dashed #ced4da', borderRadius: '8px', textAlign: 'center', background: '#f8f9fa', 
-                  cursor: 'pointer', padding: '20px', transition: 'all 0.2s', position: 'relative'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.borderColor = '#007bff'}
-                onMouseOut={(e) => e.currentTarget.style.borderColor = '#ced4da'}
-              >
-                {previewImage ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <img src={previewImage} alt="Preview" style={{ maxWidth: '100%', maxHeight: '180px', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} />
-                    <span style={{ marginTop: '10px', fontSize: '0.85rem', color: '#007bff', fontWeight: '600' }}>🔄 Chọn ảnh khác</span>
-                  </div>
-                ) : (
-                  <div style={{ color: '#6c757d' }}>
-                    <FaCloudUploadAlt size={30} color="#adb5bd" />
-                    <p style={{ margin: '5px 0 0', fontWeight: '500', fontSize:'0.9rem' }}>Tải ảnh lên</p>
-                  </div>
-                )}
-                <input id="fileInput" type="file" name="hinhAnh" onChange={handleChange} accept="image/*" style={{ display: 'none' }} />
+              <div>
+                <label style={{ fontWeight: '600', marginBottom: '5px', display:'block', color: '#495057' }}>Hình ảnh</label>
+                <div onClick={() => document.getElementById('fileInput').click()} style={{ border: '2px dashed #ced4da', borderRadius: '8px', textAlign: 'center', background: '#f8f9fa', cursor: 'pointer', padding: '20px' }}>
+                  {previewImage ? (
+                    <img src={previewImage} alt="Preview" style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '8px' }} />
+                  ) : (
+                    <div style={{ color: '#6c757d' }}>
+                      <FaCloudUploadAlt size={30} />
+                      <p>Tải ảnh lên</p>
+                    </div>
+                  )}
+                  <input id="fileInput" type="file" name="hinhAnh" onChange={handleChange} accept="image/*" style={{ display: 'none' }} />
+                </div>
               </div>
-            </div>
 
-            {/* BUTTONS */}
-            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              <button disabled={isLoading} type="submit" style={{ flex: 1, padding: '12px', background: isEditing ? '#007bff' : '#28a745', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: isLoading ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', opacity: isLoading ? 0.7 : 1 }}>
-                {isLoading ? <FaSpinner className="fa-spin" /> : (isEditing ? <><FaSave /> LƯU</> : <><FaPlus /> THÊM MỚI</>)}
-              </button>
-              
-              {isEditing && (
-                <button type="button" onClick={handleCancelEdit} style={{ padding: '12px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                  <FaSync /> HỦY
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button disabled={isLoading} type="submit" style={{ flex: 1, padding: '12px', background: isEditing ? '#007bff' : '#28a745', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  {isLoading ? <FaSpinner className="fa-spin" /> : (isEditing ? 'LƯU THAY ĐỔI' : 'THÊM MÓN MỚI')}
                 </button>
-              )}
-            </div>
-          </form>
+                {isEditing && (
+                  <button type="button" onClick={handleCancelEdit} style={{ padding: '12px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>HỦY</button>
+                )}
+              </div>
+            </form>
+          </div>
         </div>
 
-        {/* === DANH SÁCH BÊN PHẢI === */}
-        <div style={{ background: '#fff', padding: '25px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ marginBottom: '20px', color: '#343a40', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '2px solid #f1f1f1', paddingBottom: '15px' }}>
-            <FaUtensils /> Danh Sách Món <span style={{ fontSize: '0.9rem', color: '#fff', background: '#28a745', padding:'2px 8px', borderRadius:'10px', marginLeft:'5px' }}>{foods.length}</span>
+        {/* === DANH SÁCH BÊN PHẢI (Mở chốt, thả bung lụa cho trang tự kéo dài) === */}
+        <div style={{ background: '#fff', padding: '25px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+          <h3 style={{ marginBottom: '20px', color: '#343a40', borderBottom: '2px solid #f1f1f1', paddingBottom: '15px' }}>
+            <FaUtensils /> Danh Sách Món ({foods.length})
           </h3>
           
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
-              <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 10 }}>
-                <tr style={{ background: '#f8f9fa', color: '#495057', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>
-                  <th style={{ padding: '15px', width: '80px' }}>Hình</th>
-                  <th style={{ padding: '15px' }}>Tên món</th>
-                  <th style={{ padding: '15px' }}>Giá bán</th>
-                  <th style={{ padding: '15px' }}>Danh mục</th>
-                  <th style={{ padding: '15px' }}>Trạng thái</th>
-                  <th style={{ padding: '15px', textAlign: 'center', width: '120px' }}>Thao tác</th>
+          <div className="table-container" style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #f1f1f1' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', position: 'relative' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                <tr style={{ background: '#f8f9fa', color: '#495057', textAlign: 'left', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+                  <th style={{ padding: '15px', background: '#f8f9fa' }}>Hình</th>
+                  <th style={{ padding: '15px', background: '#f8f9fa' }}>Tên món</th>
+                  <th style={{ padding: '15px', background: '#f8f9fa' }}>Giá bán</th>
+                  <th style={{ padding: '15px', background: '#f8f9fa' }}>Tồn kho</th>
+                  <th style={{ padding: '15px', background: '#f8f9fa' }}>Trạng thái</th>
+                  <th style={{ padding: '15px', textAlign: 'center', background: '#f8f9fa' }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {foods.length > 0 ? foods.map(item => (
-                  <tr key={item.maMon} 
-                      style={{ 
-                          borderBottom: '1px solid #f1f1f1', 
-                          transition: 'background 0.2s',
-                          opacity: item.isDeleted ? 0.6 : 1, // 👈 LÀM MỜ NẾU ĐÃ XÓA
-                          background: item.isDeleted ? '#f8f9fa' : 'white'
-                      }} 
-                      className="hover-row">
-                    
-                    {/* Hình Ảnh */}
+                {foods.map(item => (
+                  <tr key={item.maMon} style={{ borderBottom: '1px solid #f1f1f1', opacity: item.isDeleted ? 0.6 : 1 }}>
                     <td style={{ padding: '10px 15px' }}>
-                      <div style={{ width: '50px', height: '50px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #dee2e6', display:'flex', alignItems:'center', justifyContent:'center', background:'#f8f9fa' }}>
-                        {getImageUrl(item.hinhAnh) ? (
-                            <img src={getImageUrl(item.hinhAnh)} alt={item.tenMon} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: item.isDeleted ? 'grayscale(100%)' : 'none' }} onError={(e) => e.target.src = 'https://placehold.co/80?text=Error'} />
-                        ) : <FaImage color="#ccc"/>}
-                      </div>
+                      <img src={getImageUrl(item.hinhAnh)} alt="" style={{ width: '50px', height: '50px', borderRadius: '6px', objectFit: 'cover' }} onError={(e) => e.target.src = 'https://placehold.co/50?text=Food'} />
                     </td>
-                    
-                    {/* Tên & Giá */}
-                    <td style={{ padding: '10px 15px', fontWeight: '600', color: item.isDeleted ? '#999' : '#212529', textDecoration: item.isDeleted ? 'line-through' : 'none' }}>
-                        {item.tenMon}
+                    <td style={{ padding: '15px', fontWeight: '600' }}>{item.tenMon}</td>
+                    <td style={{ padding: '15px', color: '#dc3545', fontWeight: 'bold' }}>{item.giaBan.toLocaleString()} đ</td>
+                    <td style={{ padding: '15px' }}>
+                      <span style={{ fontWeight:'700', color: item.soLuong > 10 ? '#2b8a3e' : '#f08c00' }}>
+                        <FaBox size={12} style={{marginRight:'5px'}}/>{item.soLuong}
+                      </span>
                     </td>
-                    <td style={{ padding: '10px 15px', color: item.isDeleted ? '#999' : '#dc3545', fontWeight: 'bold' }}>
-                        {Number(item.gia).toLocaleString()} đ
+                    <td style={{ padding: '15px' }}>
+                      {item.isDeleted ? <span className="badge-danger">Ngừng bán</span> : <span className="badge-success">Đang bán</span>}
                     </td>
-                    
-                    {/* Danh Mục */}
-                    <td style={{ padding: '10px 15px', color: '#6c757d' }}>
-                        {item.tenDanhMuc ? (
-                            <span style={{background:'#e9ecef', padding:'4px 8px', borderRadius:'4px', fontSize:'0.85rem'}}>{item.tenDanhMuc}</span>
-                        ) : <span style={{color:'#ccc', fontStyle:'italic'}}>---</span>}
-                    </td>
-
-                    {/* Trạng thái */}
-                    <td style={{ padding: '10px 15px' }}>
-                        {item.isDeleted ? (
-                            <span style={{background:'#ffe3e3', color:'#e03131', padding:'4px 8px', borderRadius:'4px', fontSize:'0.8rem', display:'inline-flex', alignItems:'center', gap:'5px'}}>
-                                <FaBan size={10}/> Đã xóa
-                            </span>
-                        ) : (
-                            <span style={{background:'#d3f9d8', color:'#2b8a3e', padding:'4px 8px', borderRadius:'4px', fontSize:'0.8rem'}}>
-                                Đang bán
-                            </span>
-                        )}
-                    </td>
-                    
-                    {/* Thao tác */}
                     <td style={{ padding: '10px 15px', textAlign: 'center' }}>
                       <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                        
                         {!item.isDeleted && (
-                            <button onClick={() => handleEditClick(item)} style={{ border: 'none', background: '#e7f5ff', color: '#007bff', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Sửa">
-                              <FaEdit size={14} />
-                            </button>
+                          <button onClick={() => handleEditClick(item)} style={{ border:'none', background:'#e7f5ff', color:'#007bff', padding:'8px', borderRadius:'6px', cursor:'pointer' }} title="Sửa"><FaEdit /></button>
                         )}
-
                         {item.isDeleted ? (
-                            <button onClick={() => handleRestore(item.maMon)} style={{ border: 'none', background: '#d3f9d8', color: '#2b8a3e', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Khôi phục">
-                              <FaUndo size={14} />
-                            </button>
+                          <button onClick={() => handleRestore(item.maMon)} style={{ border:'none', background:'#d3f9d8', color:'#2b8a3e', padding:'8px', borderRadius:'6px', cursor:'pointer' }} title="Khôi phục"><FaUndo /></button>
                         ) : (
-                            <button onClick={() => handleDelete(item.maMon)} style={{ border: 'none', background: '#ffe3e3', color: '#e03131', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Ngừng kinh doanh">
-                              <FaTrash size={14} />
-                            </button>
+                          <button onClick={() => handleDelete(item.maMon)} style={{ border:'none', background:'#ffe3e3', color:'#e03131', padding:'8px', borderRadius:'6px', cursor:'pointer' }} title="Xóa"><FaTrash /></button>
                         )}
-
                       </div>
                     </td>
                   </tr>
-                )) : (
-                  <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#adb5bd' }}>
-                      <div style={{fontSize:'2rem', marginBottom:'10px'}}>🍲</div>
-                      Chưa có món ăn nào. Hãy thêm mới ngay!
-                    </td>
-                  </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -396,12 +318,15 @@ function AdminFood() {
       </div>
 
       <style>{`
-        .hover-row:hover { background-color: #f8f9fa !important; }
+        .badge-success { background: #d3f9d8; color: #2b8a3e; padding: 4px 8px; borderRadius: 4px; font-size: 0.8rem; }
+        .badge-danger { background: #ffe3e3; color: #e03131; padding: 4px 8px; borderRadius: 4px; font-size: 0.8rem; }
         .fa-spin { animation: spin 1s infinite linear; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @media (max-width: 900px) {
-            .grid-layout { grid-template-columns: 1fr !important; }
-        }
+        
+        .table-container::-webkit-scrollbar { width: 8px; height: 8px; }
+        .table-container::-webkit-scrollbar-track { background: #f8f9fa; border-radius: 8px; }
+        .table-container::-webkit-scrollbar-thumb { background: #ced4da; border-radius: 8px; }
+        .table-container::-webkit-scrollbar-thumb:hover { background: #adb5bd; }
       `}</style>
     </div>
   );

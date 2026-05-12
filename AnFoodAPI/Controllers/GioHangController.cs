@@ -1,7 +1,11 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AnFoodAPI.Models;
-using AnFoodAPI.DTOs; // Đảm bảo bạn đã có DTOs cho request
+using AnFoodAPI.DTOs;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace AnFoodAPI.Controllers
 {
@@ -16,90 +20,154 @@ namespace AnFoodAPI.Controllers
             _context = context;
         }
 
-        // 1. LẤY GIỎ HÀNG (Đã nâng cấp load Ảnh)
+        // =======================================================
+        // 1. LẤY GIỎ HÀNG (ĐÃ FIX LỖI MẤT HÌNH ẢNH)
+        // =======================================================
         [HttpGet("{maNguoiDung}")]
         public async Task<IActionResult> GetGioHang(int maNguoiDung)
         {
-            var gioHang = await _context.GioHangs
-                .Include(g => g.ChiTietGioHangs)
-                .ThenInclude(ct => ct.MonAn)
-                .ThenInclude(m => m.HinhAnhMonAns) // ✅ QUAN TRỌNG: Load thêm ảnh
-                .FirstOrDefaultAsync(g => g.MaNguoiDung == maNguoiDung);
-
-            if (gioHang == null) return Ok(new List<object>());
-
-            var result = gioHang.ChiTietGioHangs.Select(ct => new
+            try
             {
-                maMon = ct.MaMon,
-                tenMon = ct.MonAn.TenMon,
-                gia = ct.MonAn.Gia,
-                // Lấy ảnh đầu tiên hoặc ảnh mặc định
-                hinhAnh = ct.MonAn.HinhAnhMonAns.FirstOrDefault()?.DuongDan ?? "https://placehold.co/100",
-                quantity = ct.SoLuong
-            });
+                // 🔥 BƯỚC 1: Lôi thẳng toàn bộ dữ liệu lên RAM bằng ToListAsync
+                var gioHangs = await _context.GioHangs
+                    .AsNoTracking()
+                    .Include(g => g.ChiTietGioHangs)
+                        .ThenInclude(ct => ct.MonAn)
+                            .ThenInclude(m => m.HinhAnhMonAns)
+                    .Where(g => g.MaNguoiDung == maNguoiDung)
+                    .ToListAsync();
 
-            return Ok(result);
+                var gioHang = gioHangs.FirstOrDefault();
+
+                if (gioHang == null || !gioHang.ChiTietGioHangs.Any()) 
+                    return Ok(new List<object>());
+
+                // 🔥 BƯỚC 2: Cắt gọt và lấy ảnh chuẩn trên RAM
+                var result = gioHang.ChiTietGioHangs.Select(ct => new
+                {
+                    maMon = ct.MaMon,
+                    tenMon = ct.MonAn?.TenMon, 
+                    gia = ct.MonAn?.Gia ?? 0,
+                    // 👉 Đồng bộ logic lấy ảnh như MonAnController
+                    hinhAnh = !string.IsNullOrEmpty(ct.MonAn?.HinhAnh) 
+                                ? ct.MonAn.HinhAnh 
+                                : (ct.MonAn?.HinhAnhMonAns?.FirstOrDefault()?.DuongDan ?? "https://placehold.co/100x100?text=Food"),
+                    quantity = ct.SoLuong ?? 0
+                }).ToList();
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = "Lỗi Server: " + ex.Message });
+            }
         }
 
-        // 2. THÊM VÀO GIỎ (Giữ nguyên logic của bạn)
+        // =======================================================
+        // 2. THÊM VÀO GIỎ (ĐÃ FIX LỖI SỐ LƯỢNG NHẢY LOẠN XẠ)
+        // =======================================================
         [HttpPost("Them")]
         public async Task<IActionResult> ThemVaoGio([FromBody] ThemVaoGioRequest req)
         {
-            var gioHang = await _context.GioHangs.FirstOrDefaultAsync(g => g.MaNguoiDung == req.MaNguoiDung);
-            if (gioHang == null)
+            if (req == null || req.MaNguoiDung <= 0 || req.MaMon <= 0 || req.SoLuong <= 0)
+                return BadRequest(new { success = false, message = "Dữ liệu gửi lên không hợp lệ." });
+
+            try
             {
-                gioHang = new GioHang { MaNguoiDung = req.MaNguoiDung, NgayTao = DateTime.Now };
-                _context.GioHangs.Add(gioHang);
+                var gioHang = await _context.GioHangs.FirstOrDefaultAsync(g => g.MaNguoiDung == req.MaNguoiDung);
+                
+                if (gioHang == null)
+                {
+                    gioHang = new GioHang { MaNguoiDung = req.MaNguoiDung, NgayTao = DateTime.Now };
+                    _context.GioHangs.Add(gioHang);
+                    await _context.SaveChangesAsync(); 
+                }
+
+                var chiTiet = await _context.ChiTietGioHangs
+                    .FirstOrDefaultAsync(ct => ct.MaGioHang == gioHang.MaGioHang && ct.MaMon == req.MaMon);
+
+                if (chiTiet != null) 
+                {
+                    // 🔥 FIX LỖI NHẢY SỐ LƯỢNG: Ghi đè số lượng người dùng gửi lên, KHÔNG CỘNG DỒN!
+                    chiTiet.SoLuong = req.SoLuong; 
+                    _context.ChiTietGioHangs.Update(chiTiet);
+                }
+                else
+                {
+                    chiTiet = new ChiTietGioHang { MaGioHang = gioHang.MaGioHang, MaMon = req.MaMon, SoLuong = req.SoLuong };
+                    _context.ChiTietGioHangs.Add(chiTiet);
+                }
+
                 await _context.SaveChangesAsync();
+                return Ok(new { success = true, message = "Cập nhật giỏ hàng thành công!" });
             }
-
-            var chiTiet = await _context.ChiTietGioHangs
-                .FirstOrDefaultAsync(ct => ct.MaGioHang == gioHang.MaGioHang && ct.MaMon == req.MaMon);
-
-            if (chiTiet != null) chiTiet.SoLuong += req.SoLuong;
-            else
+            catch (Exception ex)
             {
-                chiTiet = new ChiTietGioHang { MaGioHang = gioHang.MaGioHang, MaMon = req.MaMon, SoLuong = req.SoLuong };
-                _context.ChiTietGioHangs.Add(chiTiet);
+                return StatusCode(500, new { success = false, message = "Lỗi Server: " + ex.Message });
             }
-
-            await _context.SaveChangesAsync();
-            return Ok(new { message = "Thêm thành công" });
         }
 
-        // 3. 🆕 CẬP NHẬT SỐ LƯỢNG (Dùng cho nút + -)
+        // =======================================================
+        // 3. CẬP NHẬT SỐ LƯỢNG (+ / -)
+        // =======================================================
         [HttpPost("CapNhat")]
         public async Task<IActionResult> CapNhatGioHang([FromBody] ThemVaoGioRequest req)
         {
-            // Tìm chi tiết giỏ hàng của user
-            var chiTiet = await _context.ChiTietGioHangs
-                .Include(ct => ct.GioHang)
-                .FirstOrDefaultAsync(ct => ct.GioHang.MaNguoiDung == req.MaNguoiDung && ct.MaMon == req.MaMon);
+            if (req == null || req.MaNguoiDung <= 0 || req.MaMon <= 0)
+                return BadRequest(new { success = false, message = "Dữ liệu gửi lên không hợp lệ." });
 
-            if (chiTiet == null) return NotFound("Không tìm thấy món trong giỏ");
+            try
+            {
+                var chiTiet = await _context.ChiTietGioHangs
+                    .Include(ct => ct.GioHang)
+                    .FirstOrDefaultAsync(ct => ct.GioHang.MaNguoiDung == req.MaNguoiDung && ct.MaMon == req.MaMon);
 
-            // Cập nhật số lượng mới
-            chiTiet.SoLuong = req.SoLuong;
-            if (chiTiet.SoLuong <= 0) _context.ChiTietGioHangs.Remove(chiTiet); // Nếu về 0 thì xóa luôn
+                if (chiTiet == null) 
+                    return NotFound(new { success = false, message = "Không tìm thấy món này trong giỏ hàng." });
 
-            await _context.SaveChangesAsync();
-            return Ok(new { message = "Cập nhật thành công" });
+                if (req.SoLuong <= 0) 
+                {
+                    _context.ChiTietGioHangs.Remove(chiTiet); 
+                }
+                else 
+                {
+                    chiTiet.SoLuong = req.SoLuong; 
+                    _context.ChiTietGioHangs.Update(chiTiet);
+                }
+
+                await _context.SaveChangesAsync();
+                return Ok(new { success = true, message = "Cập nhật số lượng thành công!" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = "Lỗi Server: " + ex.Message });
+            }
         }
 
-        // 4. 🆕 XÓA MÓN ĂN (Nút thùng rác)
+        // =======================================================
+        // 4. XÓA MÓN ĂN (NÚT THÙNG RÁC)
+        // =======================================================
         [HttpDelete("Xoa/{maNguoiDung}/{maMon}")]
         public async Task<IActionResult> XoaMonKhoiGio(int maNguoiDung, int maMon)
         {
-            var chiTiet = await _context.ChiTietGioHangs
-                .Include(ct => ct.GioHang)
-                .FirstOrDefaultAsync(ct => ct.GioHang.MaNguoiDung == maNguoiDung && ct.MaMon == maMon);
-
-            if (chiTiet != null)
+            try
             {
-                _context.ChiTietGioHangs.Remove(chiTiet);
-                await _context.SaveChangesAsync();
+                var chiTiet = await _context.ChiTietGioHangs
+                    .Include(ct => ct.GioHang)
+                    .FirstOrDefaultAsync(ct => ct.GioHang.MaNguoiDung == maNguoiDung && ct.MaMon == maMon);
+
+                if (chiTiet != null)
+                {
+                    _context.ChiTietGioHangs.Remove(chiTiet);
+                    await _context.SaveChangesAsync();
+                }
+                
+                return Ok(new { success = true, message = "Đã xóa món ăn khỏi giỏ." });
             }
-            return Ok(new { message = "Đã xóa món ăn" });
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = "Lỗi Server: " + ex.Message });
+            }
         }
     }
 }

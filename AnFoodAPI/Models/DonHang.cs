@@ -5,7 +5,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace AnFoodAPI.Models
 {
-    [Table("don_hang")] // 👈 Đảm bảo map đúng bảng
+    [Table("don_hang")] 
     public partial class DonHang
     {
         [Key]
@@ -27,10 +27,6 @@ namespace AnFoodAPI.Models
         [Column("ngay_dat", TypeName = "datetime")]
         public DateTime? NgayDat { get; set; }
 
-        // ============================================================
-        // 👇 4 THUỘC TÍNH MỚI (ĐÃ THÊM MAPPING)
-        // ============================================================
-        
         [Column("nguoi_nhan")] 
         public string? NguoiNhan { get; set; }
 
@@ -42,22 +38,33 @@ namespace AnFoodAPI.Models
 
         [Column("ghi_chu")]
         public string? GhiChu { get; set; }
+        
+        [Column("ly_do_huy")]
+        public string? LyDoHuy { get; set; }
+
+        // ============================================================
+        // 👇 3 THUỘC TÍNH MỚI CHO VOUCHER & SHIP
+        // ============================================================
+        [Column("phi_van_chuyen")]
+        public decimal? PhiVanChuyen { get; set; }
+
+        [Column("ma_voucher")]
+        public int? MaVoucher { get; set; } 
+
+        [Column("so_tien_giam")]
+        public decimal? SoTienGiam { get; set; }
 
         // ============================================================
         // 👇 CÁC MỐI NỐI (NAVIGATION PROPERTIES)
         // ============================================================
-
         [ForeignKey("MaNguoiDung")]
-        // Không cần InverseProperty nếu bên NguoiDung.cs đã xóa nó
         public virtual NguoiDung? NguoiDung { get; set; }
 
         [ForeignKey("MaDiaChi")]
         public virtual DiaChiGiaoHang? DiaChiGiaoHangNavigation { get; set; }
 
         public virtual ICollection<ChiTietDonHang> ChiTietDonHangs { get; set; } = new List<ChiTietDonHang>();
-
         public virtual ICollection<LichSuTrangThaiDonHang> LichSuTrangThaiDonHangs { get; set; } = new List<LichSuTrangThaiDonHang>();
-
         public virtual ICollection<ThanhToan> ThanhToans { get; set; } = new List<ThanhToan>();
     }
 }

@@ -140,7 +140,8 @@ function AdminCategory() {
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
         <h2 style={{ color: '#2d3436', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.8rem', margin: 0 }}>
-            <FaLayerGroup color="#e64a19" /> Quản Lý Danh Mục
+            {/* THÊM SIZE */}
+            <FaLayerGroup size={28} color="#e64a19" /> Quản Lý Danh Mục
         </h2>
       </div>
 
@@ -149,7 +150,8 @@ function AdminCategory() {
         {/* === CỘT TRÁI: FORM === */}
         <div style={{ background: '#fff', padding: '30px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', position: 'sticky', top: '20px' }}>
           <h3 style={{ marginBottom: '20px', color: isEditing ? '#0984e3' : '#2d3436', display: 'flex', alignItems: 'center', gap: '10px', fontSize:'1.2rem', borderBottom:'2px solid #f1f2f6', paddingBottom:'15px' }}>
-            {isEditing ? <><FaEdit /> Cập Nhật Danh Mục</> : <><FaPlus /> Thêm Danh Mục Mới</>}
+            {/* THÊM SIZE */}
+            {isEditing ? <><FaEdit size={20} /> Cập Nhật Danh Mục</> : <><FaPlus size={20} /> Thêm Danh Mục Mới</>}
           </h3>
           
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -180,13 +182,15 @@ function AdminCategory() {
                 disabled={submitting}
                 style={{ flex: 1, padding: '12px', background: isEditing ? '#0984e3' : '#e64a19', color: '#fff', border: 'none', borderRadius: '50px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', transition:'0.2s', opacity: submitting ? 0.7 : 1 }}
               >
-                {submitting ? <FaSpinner className="fa-spin"/> : <FaSave />} 
+                {/* THÊM SIZE */}
+                {submitting ? <FaSpinner className="fa-spin" size={16}/> : <FaSave size={16} />} 
                 {isEditing ? "LƯU THAY ĐỔI" : "THÊM MỚI"}
               </button>
               
               {isEditing && (
                 <button type="button" onClick={handleCancel} style={{ padding: '12px 20px', background: '#f1f2f6', color: '#636e72', border: 'none', borderRadius: '50px', fontWeight: 'bold', cursor: 'pointer', transition:'0.2s', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <FaSync /> Hủy
+                  {/* THÊM SIZE */}
+                  <FaSync size={16} /> Hủy
                 </button>
               )}
             </div>
@@ -196,7 +200,8 @@ function AdminCategory() {
         {/* === CỘT PHẢI: DANH SÁCH === */}
         <div style={{ background: '#fff', padding: '30px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
           <h3 style={{ marginBottom: '20px', color: '#2d3436', display: 'flex', alignItems: 'center', gap: '10px', fontSize:'1.2rem', borderBottom:'2px solid #f1f2f6', paddingBottom:'15px' }}>
-            <FaListAlt color="#00b894" /> Danh Sách Hiện Có <span style={{fontSize:'0.9rem', color:'#fff', background:'#00b894', padding:'2px 8px', borderRadius:'10px', marginLeft:'5px'}}>{categories.length}</span>
+            {/* THÊM SIZE */}
+            <FaListAlt size={22} color="#00b894" /> Danh Sách Hiện Có <span style={{fontSize:'0.9rem', color:'#fff', background:'#00b894', padding:'2px 8px', borderRadius:'10px', marginLeft:'5px'}}>{categories.length}</span>
           </h3>
           
           {loading ? <div style={{textAlign:'center', padding:'40px', color:'#999'}}><FaSpinner className="fa-spin" size={24}/> Đang tải dữ liệu...</div> : (
@@ -250,17 +255,20 @@ function AdminCategory() {
                             
                             {!cat.isDeleted && (
                                 <button onClick={() => handleEditClick(cat)} title="Sửa" style={actionBtnStyle('#e3f2fd', '#0984e3')}>
-                                    <FaEdit />
+                                    {/* THÊM SIZE */}
+                                    <FaEdit size={16} />
                                 </button>
                             )}
 
                             {cat.isDeleted ? (
                                 <button onClick={() => handleRestore(cat.maDanhMuc)} title="Khôi phục" style={actionBtnStyle('#d3f9d8', '#2b8a3e')}>
-                                    <FaUndo />
+                                    {/* THÊM SIZE */}
+                                    <FaUndo size={16} />
                                 </button>
                             ) : (
                                 <button onClick={() => handleDelete(cat.maDanhMuc)} title="Ngừng hoạt động" style={actionBtnStyle('#ffebee', '#d63031')}>
-                                    <FaTrash />
+                                    {/* THÊM SIZE */}
+                                    <FaTrash size={16} />
                                 </button>
                             )}
                             
@@ -278,13 +286,19 @@ function AdminCategory() {
 
       </div>
       
-      {/* CSS Helper */}
+      {/* CSS Helper - ĐÃ BỔ SUNG FIX LỖI ẨN SVG */}
       <style>{`
         .hover-row:hover { background-color: #fdfdfd !important; }
         input:focus, textarea:focus { border-color: #e64a19 !important; box-shadow: 0 0 0 3px rgba(230, 74, 25, 0.1); }
         .fa-spin { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
         
+        /* Bổ sung CSS cho toàn bộ svg trong nút action để ép nó hiển thị */
+        button svg {
+            flex-shrink: 0 !important;
+            display: inline-block !important;
+        }
+
         @media (max-width: 768px) {
             .grid-layout { grid-template-columns: 1fr !important; }
         }
@@ -293,8 +307,8 @@ function AdminCategory() {
   );
 }
 
-// STYLES
+// STYLES - ĐÃ THÊM PADDING: 0 ĐỂ CHỐNG XẸP
 const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '10px', border: '1px solid #dfe6e9', outline: 'none', transition: '0.3s', fontSize: '0.95rem' };
-const actionBtnStyle = (bg, color) => ({ border: 'none', background: bg, color: color, width: '35px', height: '35px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.2s' });
+const actionBtnStyle = (bg, color) => ({ border: 'none', background: bg, color: color, width: '35px', height: '35px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.2s', padding: '0' });
 
 export default AdminCategory;

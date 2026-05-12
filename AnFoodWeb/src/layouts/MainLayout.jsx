@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'; // Outlet là nơi nội dung thay đ
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
+
 const MainLayout = ({ cartCount, user, onLogout }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>

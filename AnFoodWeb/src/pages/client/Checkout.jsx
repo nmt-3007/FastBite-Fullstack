@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { ToastContainer, toast } from 'react-toastify';
+import { 
+    FaMapMarkerAlt, FaCreditCard, FaTicketAlt, 
+    FaTruck, FaShieldAlt, FaMoneyBillWave 
+} from 'react-icons/fa';
 import 'react-toastify/dist/ReactToastify.css';
 
 // ✅ IMPORT CHUẨN TỪ HỆ THỐNG
@@ -17,18 +21,25 @@ function Checkout({ clearCart }) {
     } catch { return null; }
   }, []);
 
-  const SHIP_FEE = 0; // Miễn phí ship cho đẹp
+  // 👉 CẤU HÌNH HỆ THỐNG
+  const FREE_SHIPPING_THRESHOLD = 150000; // Đơn từ 150k được freeship
+  const BASE_SHIPPING_FEE = 30000;        // Phí ship mặc định
 
   // --- STATE ---
   const [checkoutItems, setCheckoutItems] = useState([]);
-  const [summary, setSummary] = useState({ tamTinh: 0, tongCong: 0 });
+  const [summary, setSummary] = useState({ tamTinh: 0, phiShip: 0 });
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [isLoading, setIsLoading] = useState(false); 
+
+  // State quản lý Voucher
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedVoucher, setAppliedVoucher] = useState(null);
+  const [isCheckingVoucher, setIsCheckingVoucher] = useState(false);
 
   const [formData, setFormData] = useState({
     nguoiNhan: user?.hoTen || '',
     soDienThoai: user?.soDienThoai || '',
-    diaChiGiaoHang: '', // Sẽ bind vào input địa chỉ
+    diaChiGiaoHang: '', 
     ghiChu: '',
     phuongThuc: 'COD'
   });
@@ -41,23 +52,18 @@ function Checkout({ clearCart }) {
       return;
     }
 
-    // 👇👇👇 LOGIC LẤY DỮ LIỆU GIỎ HÀNG CHUẨN XÁC 👇👇👇
     const loadCartData = () => {
         let itemsToCheckout = [];
         try {
-            // 1. Ưu tiên lấy từ 'checkoutItems' (Dữ liệu đã được tính toán kỹ ở trang Cart)
             const rawCheckout = localStorage.getItem('checkoutItems');
             if (rawCheckout) {
                 itemsToCheckout = JSON.parse(rawCheckout);
-            } 
-            // 2. Fallback: Nếu không có, lấy từ 'cartItems' thường
-            else {
+            } else {
                 const rawCart = localStorage.getItem('cartItems');
                 itemsToCheckout = rawCart ? JSON.parse(rawCart) : [];
             }
         } catch (e) {
             console.error("Lỗi đọc giỏ hàng:", e);
-            itemsToCheckout = [];
         }
 
         if (!Array.isArray(itemsToCheckout) || itemsToCheckout.length === 0) {
@@ -66,25 +72,19 @@ function Checkout({ clearCart }) {
             return;
         }
 
-        // 3. Chuẩn hóa dữ liệu lần cuối để đảm bảo không bị lỗi tính toán
         const cleanCart = itemsToCheckout.map(item => ({
             ...item,
-            // Đảm bảo số lượng là số
             soLuong: Number(item.soLuong || item.quantity || 1),
-            // QUAN TRỌNG: Giá ở đây phải là giá cuối cùng (đã giảm).
-            // Nếu dữ liệu từ 'checkoutItems' thì 'gia' chính là 'finalPrice'.
-            // Nếu dữ liệu từ 'cartItems' (fallback), ta tạm chấp nhận 'gia' hiện tại.
-            gia: Number(item.gia || item.price || 0)
+            giaBan: Number(item.giaBan || item.gia || item.price || 0)
         }));
 
         setCheckoutItems(cleanCart);
 
-        // 4. Tính tổng tiền
-        const tamTinh = cleanCart.reduce((sum, item) => {
-            return sum + (item.gia * item.soLuong);
-        }, 0);
+        // Tính tiền hàng và tiền ship
+        const tamTinh = cleanCart.reduce((sum, item) => sum + (item.giaBan * item.soLuong), 0);
+        const phiShip = tamTinh >= FREE_SHIPPING_THRESHOLD ? 0 : BASE_SHIPPING_FEE;
         
-        setSummary({ tamTinh, tongCong: tamTinh + SHIP_FEE });
+        setSummary({ tamTinh, phiShip });
     };
 
     loadCartData();
@@ -97,16 +97,12 @@ function Checkout({ clearCart }) {
             const addressData = Array.isArray(res) ? res : [];
             setSavedAddresses(addressData);
             
-            // Tự động điền địa chỉ mặc định
             const defaultAddr = addressData.find(d => d.macDinh);
             if (defaultAddr) fillFormData(defaultAddr);
             else if (user.diaChi) {
-                // Nếu không có sổ địa chỉ, lấy địa chỉ từ profile user
                 setFormData(prev => ({ ...prev, diaChiGiaoHang: user.diaChi }));
             }
-        } catch (err) {
-            console.error("Lỗi lấy địa chỉ:", err);
-        }
+        } catch (err) { console.error("Lỗi lấy địa chỉ:", err); }
     };
     fetchAddress();
 
@@ -125,11 +121,50 @@ function Checkout({ clearCart }) {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // --- 3. XỬ LÝ ĐẶT HÀNG ---
+  // --- 3. XỬ LÝ VOUCHER ---
+  const handleApplyVoucher = async () => {
+      if (!couponInput.trim()) { toast.warning("Sếp chưa nhập mã kìa!"); return; }
+      
+      setIsCheckingVoucher(true);
+      try {
+          const res = await axiosClient.post('/Voucher/Check', {
+              maCode: couponInput.trim(),
+              tongTienDonHang: summary.tamTinh // Backend check trên giá trị hàng hóa
+          });
+
+          if (res && res.hopLe) {
+              setAppliedVoucher({
+                  maCode: couponInput.trim(),
+                  maVoucher: res.maVoucher,
+                  soTienGiam: res.soTienGiam
+              });
+              toast.success(`🎉 ${res.message}`);
+          }
+      } catch (err) {
+          setAppliedVoucher(null);
+          toast.error(err.response?.data?.message || "Mã không hợp lệ hoặc đã hết hạn!");
+      } finally {
+          setIsCheckingVoucher(false);
+      }
+  };
+
+  const handleRemoveVoucher = () => {
+      setAppliedVoucher(null);
+      setCouponInput('');
+      toast.info("Đã gỡ mã giảm giá");
+  };
+
+  // --- TÍNH TỔNG TIỀN CUỐI CÙNG ---
+  const tongCongCuoiCung = useMemo(() => {
+      const tienGiam = appliedVoucher ? appliedVoucher.soTienGiam : 0;
+      let total = summary.tamTinh + summary.phiShip - tienGiam;
+      return total > 0 ? total : 0; // Tránh trường hợp voucher bự quá làm âm tiền
+  }, [summary, appliedVoucher]);
+
+  // --- 4. XỬ LÝ ĐẶT HÀNG ---
   const handleOrder = async (e) => {
     e.preventDefault();
     
-    // Validate
     if (!formData.diaChiGiaoHang.trim() || !formData.soDienThoai.trim()) {
       toast.warning("Vui lòng điền đầy đủ địa chỉ và số điện thoại!");
       return;
@@ -143,29 +178,33 @@ function Checkout({ clearCart }) {
 
     setIsLoading(true);
 
-    // Payload chuẩn gửi Backend
+    // 👉 PAYLOAD SIÊU CHUẨN ĐỂ GỬI XUỐNG C#
     const payload = {
         maNguoiDung: user.id || user.maNguoiDung,
         nguoiNhan: formData.nguoiNhan,
         soDienThoai: formData.soDienThoai,
         diaChiGiaoHang: formData.diaChiGiaoHang, 
         ghiChu: formData.ghiChu,
-        tongTien: summary.tongCong, 
+        
+        // Dữ liệu tiền bạc
+        tongTien: tongCongCuoiCung, 
+        phiVanChuyen: summary.phiShip,
+        maVoucher: appliedVoucher ? appliedVoucher.maVoucher : null,
+        soTienGiam: appliedVoucher ? appliedVoucher.soTienGiam : 0,
+
         chiTietDonHangs: checkoutItems.map(item => ({
-            // Ưu tiên maMon, fallback sang các trường khác nếu thiếu
             maMonAn: item.maMon || item.maMonAn || item.id,
             soLuong: item.soLuong,
-            giaBan: item.gia // Giá đã chốt (đã giảm)
+            giaBan: item.giaBan 
         }))
     };
 
     try {
         if (formData.phuongThuc === 'VNPAY') {
-            // Thanh toán Online (Logic giữ nguyên)
             const fakeOrderId = new Date().getTime().toString();
             const res = await axiosClient.post('/Payment/CreatePaymentUrl', {
                 orderId: fakeOrderId,
-                amount: summary.tongCong,
+                amount: tongCongCuoiCung, // Thanh toán đúng số tiền cuối
                 orderInfo: `Thanh toan don hang ${fakeOrderId}`,
                 fullName: formData.nguoiNhan
             });
@@ -174,21 +213,13 @@ function Checkout({ clearCart }) {
                 window.location.href = res.url;
             }
         } else {
-            // Thanh toán COD
             const res = await axiosClient.post('/DonHang/TaoDon', payload);
-            
             if (res) {
                 toast.success("🎉 Đặt hàng thành công!", { theme: "colored" });
-                
-                // 👇👇👇 QUAN TRỌNG: DỌN DẸP GIỎ HÀNG SAU KHI MUA 👇👇👇
                 localStorage.removeItem('cartItems'); 
                 localStorage.removeItem('checkoutItems');
-                
                 window.dispatchEvent(new Event('cart-cleared')); 
-                window.dispatchEvent(new Event('cart-updated'));
-
                 if (clearCart) clearCart(); 
-                
                 setTimeout(() => navigate('/history'), 1500); 
             }
         }
@@ -201,103 +232,206 @@ function Checkout({ clearCart }) {
   };
 
   const getButtonColor = () => formData.phuongThuc === 'VNPAY' ? '#005baa' : '#e64a19';
-  const getButtonText = () => {
-      if(isLoading) return 'ĐANG XỬ LÝ...';
-      return formData.phuongThuc === 'VNPAY' ? 'THANH TOÁN VNPAY' : 'XÁC NHẬN ĐẶT HÀNG';
-  };
 
   if (!user) return null;
 
   return (
-    <div style={{ padding: '40px 20px', background: '#f5f5f5', minHeight: '100vh', fontFamily: '"Poppins", sans-serif' }}>
+    <div style={{ padding: '60px 20px', background: '#f8f9fa', minHeight: '100vh', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
       <ToastContainer position="top-center" autoClose={2000} />
       
-      <div className="container" style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '30px' }}>
-        
-        {/* CỘT TRÁI: FORM THÔNG TIN */}
-        <div style={{ background: '#fff', padding: '35px', borderRadius: '15px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
-          <h2 style={{ fontSize: '1.6rem', marginBottom: '25px', color: '#e64a19', borderBottom: '2px solid #fff5f2', paddingBottom: '10px' }}>🚚 Thông tin giao hàng</h2>
-          
-          {savedAddresses.length > 0 && (
-            <div style={{ marginBottom: '25px', background: '#e3f2fd', padding: '15px', borderRadius: '10px', border: '1px solid #90caf9' }}>
-              <label style={{ fontWeight: 'bold', color: '#1565c0', display: 'block', marginBottom: '8px', fontSize: '0.9rem' }}>📍 Chọn nhanh từ Sổ địa chỉ:</label>
-              <select defaultValue="" onChange={(e) => { 
-                  if (e.target.value === "") return;
-                  const selected = savedAddresses.find(a => a.maDiaChi === parseInt(e.target.value)); 
-                  if(selected) fillFormData(selected); 
-              }} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #64b5f6', outline: 'none', cursor: 'pointer' }}>
-                <option value="">-- Chọn địa chỉ --</option>
-                {savedAddresses.map(addr => (<option key={addr.maDiaChi} value={addr.maDiaChi}>{addr.hoTenNguoiNhan} - {addr.diaChi}</option>))}
-              </select>
-            </div>
-          )}
-          
-          <form onSubmit={handleOrder} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <div><label style={{fontWeight:'600', fontSize:'0.9rem'}}>Người nhận</label><input type="text" name="nguoiNhan" value={formData.nguoiNhan} onChange={handleChange} required style={{ width:'100%', padding: '12px', border: '1px solid #ddd', borderRadius: '8px', marginTop:'5px' }} /></div>
-                <div><label style={{fontWeight:'600', fontSize:'0.9rem'}}>Số điện thoại</label><input type="text" name="soDienThoai" value={formData.soDienThoai} onChange={handleChange} required style={{ width:'100%', padding: '12px', border: '1px solid #ddd', borderRadius: '8px', marginTop:'5px' }} /></div>
-            </div>
-            <div><label style={{fontWeight:'600', fontSize:'0.9rem'}}>Địa chỉ chi tiết</label><textarea name="diaChiGiaoHang" value={formData.diaChiGiaoHang} onChange={handleChange} required rows="3" style={{ width:'100%', padding: '12px', border: '1px solid #ddd', borderRadius: '8px', marginTop:'5px' }} /></div>
-            <div><label style={{fontWeight:'600', fontSize:'0.9rem'}}>Ghi chú (Tùy chọn)</label><textarea name="ghiChu" value={formData.ghiChu} onChange={handleChange} rows="2" style={{ width:'100%', padding: '12px', border: '1px solid #ddd', borderRadius: '8px', marginTop:'5px' }} /></div>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        <div style={{ marginBottom: '40px' }}>
+            <h1 style={{ fontSize: '2.2rem', fontWeight: '900', color: '#2d3436', margin: '0 0 10px' }}>Thanh Toán</h1>
+            <Link to="/cart" style={{ color: '#636e72', textDecoration: 'none', fontWeight: '700', transition: '0.2s' }} onMouseOver={e=>e.target.style.color='#e64a19'} onMouseOut={e=>e.target.style.color='#636e72'}>
+                ← Quay lại giỏ hàng
+            </Link>
+        </div>
 
-            <div style={{ marginTop: '10px', padding: '20px', background: '#f8f9fa', borderRadius: '10px' }}>
-                <h4 style={{ margin: '0 0 15px 0', color: '#2d3436' }}>💳 Phương thức thanh toán</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '40px', alignItems: 'start' }}>
+          
+          {/* 🔴 CỘT TRÁI: FORM ĐIỀN THÔNG TIN */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+            
+            {/* THÔNG TIN GIAO HÀNG */}
+            <div style={{ background: '#fff', padding: '35px', borderRadius: '24px', boxShadow: '0 5px 20px rgba(0,0,0,0.03)', border: '1px solid #f1f2f6' }}>
+              <h2 style={{ fontSize: '1.3rem', fontWeight: '800', marginBottom: '25px', color: '#2d3436', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <FaMapMarkerAlt color="#e64a19" /> Thông tin giao hàng
+              </h2>
+              
+              {savedAddresses.length > 0 && (
+                <div style={{ marginBottom: '25px', background: '#fff9f5', padding: '20px', borderRadius: '16px', border: '1px dashed #ffccbc' }}>
+                  <label style={{ fontWeight: '700', color: '#d84315', display: 'block', marginBottom: '10px', fontSize: '0.95rem' }}>📍 Chọn nhanh địa chỉ đã lưu:</label>
+                  <select defaultValue="" onChange={(e) => { 
+                      if (e.target.value === "") return;
+                      const selected = savedAddresses.find(a => a.maDiaChi === parseInt(e.target.value)); 
+                      if(selected) fillFormData(selected); 
+                  }} style={{ width: '100%', padding: '15px', borderRadius: '12px', border: '1px solid #ffab91', outline: 'none', cursor: 'pointer', background: '#fff', fontWeight: '600' }}>
+                    <option value="">-- Nhấn để chọn địa chỉ --</option>
+                    {savedAddresses.map(addr => (<option key={addr.maDiaChi} value={addr.maDiaChi}>{addr.hoTenNguoiNhan} - {addr.diaChi}</option>))}
+                  </select>
+                </div>
+              )}
+              
+              <form id="checkout-form" onSubmit={handleOrder} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    <div>
+                        <label style={{ fontWeight:'700', fontSize:'0.9rem', color: '#636e72', marginBottom: '8px', display: 'block' }}>Họ và tên người nhận</label>
+                        <input type="text" name="nguoiNhan" value={formData.nguoiNhan} onChange={handleChange} required style={{ width:'100%', padding: '15px', border: '1px solid #dfe6e9', borderRadius: '12px', background: '#f8f9fa', outline: 'none', fontWeight: '600' }} />
+                    </div>
+                    <div>
+                        <label style={{ fontWeight:'700', fontSize:'0.9rem', color: '#636e72', marginBottom: '8px', display: 'block' }}>Số điện thoại liên hệ</label>
+                        <input type="text" name="soDienThoai" value={formData.soDienThoai} onChange={handleChange} required style={{ width:'100%', padding: '15px', border: '1px solid #dfe6e9', borderRadius: '12px', background: '#f8f9fa', outline: 'none', fontWeight: '600' }} />
+                    </div>
+                </div>
+                <div>
+                    <label style={{ fontWeight:'700', fontSize:'0.9rem', color: '#636e72', marginBottom: '8px', display: 'block' }}>Địa chỉ giao hàng chi tiết</label>
+                    <textarea name="diaChiGiaoHang" value={formData.diaChiGiaoHang} onChange={handleChange} required rows="3" placeholder="Số nhà, Tên đường, Phường/Xã..." style={{ width:'100%', padding: '15px', border: '1px solid #dfe6e9', borderRadius: '12px', background: '#f8f9fa', outline: 'none', fontWeight: '600', resize: 'none' }} />
+                </div>
+                <div>
+                    <label style={{ fontWeight:'700', fontSize:'0.9rem', color: '#636e72', marginBottom: '8px', display: 'block' }}>Ghi chú cho quán (Tùy chọn)</label>
+                    <input type="text" name="ghiChu" value={formData.ghiChu} onChange={handleChange} placeholder="Ví dụ: Xin thêm tương ớt, không hành..." style={{ width:'100%', padding: '15px', border: '1px solid #dfe6e9', borderRadius: '12px', background: '#f8f9fa', outline: 'none', fontWeight: '600' }} />
+                </div>
+              </form>
+            </div>
+
+            {/* PHƯƠNG THỨC THANH TOÁN */}
+            <div style={{ background: '#fff', padding: '35px', borderRadius: '24px', boxShadow: '0 5px 20px rgba(0,0,0,0.03)', border: '1px solid #f1f2f6' }}>
+                <h2 style={{ fontSize: '1.3rem', fontWeight: '800', marginBottom: '25px', color: '#2d3436', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <FaCreditCard color="#e64a19" /> Phương thức thanh toán
+                </h2>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '15px', border: formData.phuongThuc === 'COD' ? '2px solid #e64a19' : '1px solid #ddd', borderRadius: '10px', background: '#fff', cursor: 'pointer' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '20px', border: formData.phuongThuc === 'COD' ? '2px solid #e64a19' : '2px solid #f1f2f6', borderRadius: '16px', background: formData.phuongThuc === 'COD' ? '#fff9f5' : '#fff', cursor: 'pointer', transition: '0.2s' }}>
                         <input type="radio" name="phuongThuc" value="COD" checked={formData.phuongThuc === 'COD'} onChange={handleChange} style={{ transform: 'scale(1.5)', accentColor: '#e64a19' }} />
-                        <div><div style={{ fontWeight: 'bold' }}>Thanh toán khi nhận hàng (COD)</div><div style={{ fontSize: '0.85rem', color: '#636e72' }}>Trả tiền mặt cho shipper</div></div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                            <div style={{ width: '45px', height: '45px', background: '#ffe0b2', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                                <FaMoneyBillWave color="#e64a19" size={20} />
+                            </div>
+                            <div>
+                                <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#2d3436' }}>Thanh toán khi nhận hàng</div>
+                                <div style={{ fontSize: '0.9rem', color: '#636e72', marginTop: '3px' }}>Trả tiền mặt (COD) cho shipper</div>
+                            </div>
+                        </div>
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '15px', border: formData.phuongThuc === 'VNPAY' ? '2px solid #005baa' : '1px solid #ddd', borderRadius: '10px', background: '#fff', cursor: 'pointer' }}>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '20px', border: formData.phuongThuc === 'VNPAY' ? '2px solid #005baa' : '2px solid #f1f2f6', borderRadius: '16px', background: formData.phuongThuc === 'VNPAY' ? '#f0f8ff' : '#fff', cursor: 'pointer', transition: '0.2s' }}>
                         <input type="radio" name="phuongThuc" value="VNPAY" checked={formData.phuongThuc === 'VNPAY'} onChange={handleChange} style={{ transform: 'scale(1.5)', accentColor: '#005baa' }} />
-                        <img src="https://vinadesign.vn/uploads/images/2023/05/vnpay-logo-vinadesign-25-12-57-55.jpg" alt="VNPAY" style={{ height: '35px', objectFit: 'contain' }} />
-                        <div><div style={{ fontWeight: 'bold', color: '#005baa' }}>Thanh toán qua VNPAY</div><div style={{ fontSize: '0.85rem', color: '#636e72' }}>Quét mã QR hoặc thẻ ATM</div></div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                            <div style={{ width: '45px', height: '45px', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#fff', borderRadius: '8px', border: '1px solid #eee' }}>
+                                <img src="https://vinadesign.vn/uploads/images/2023/05/vnpay-logo-vinadesign-25-12-57-55.jpg" alt="VNPAY" style={{ width: '35px', objectFit: 'contain' }} />
+                            </div>
+                            <div>
+                                <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#005baa' }}>Thanh toán qua VNPAY</div>
+                                <div style={{ fontSize: '0.9rem', color: '#636e72', marginTop: '3px' }}>Quét mã QR bằng App Ngân Hàng</div>
+                            </div>
+                        </div>
                     </label>
                 </div>
             </div>
+
+          </div>
+
+          {/* 🔴 CỘT PHẢI: HÓA ĐƠN & VOUCHER (ĐÃ CHUYỂN SANG LIGHT MODE) */}
+          <div style={{ background: '#fff', padding: '35px', borderRadius: '24px', height: 'fit-content', position: 'sticky', top: '20px', boxShadow: '0 5px 20px rgba(0,0,0,0.03)', border: '1px solid #f1f2f6' }}>
+            <h3 style={{ fontSize: '1.3rem', marginBottom: '25px', fontWeight: '800', color: '#2d3436', borderBottom: '2px dashed #f1f2f6', paddingBottom: '15px' }}>Chi tiết đơn hàng</h3>
+            
+            {/* DANH SÁCH MÓN */}
+            <div className="custom-scrollbar" style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '25px', paddingRight: '10px' }}>
+                {checkoutItems.map((item, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', alignItems: 'center' }}>
+                    <div style={{ display:'flex', gap: '15px', alignItems: 'center' }}>
+                      <div style={{ width: '35px', height: '35px', background: '#f8f9fa', border: '1px solid #dfe6e9', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold', fontSize: '0.9rem', color: '#2d3436' }}>
+                          {item.soLuong}x
+                      </div>
+                      <span style={{ fontWeight: '600', color: '#2d3436', fontSize: '0.95rem' }}>{item.tenMon}</span>
+                    </div>
+                    <div style={{ fontWeight: '800', color: '#2d3436' }}>
+                      {(item.giaBan * item.soLuong).toLocaleString()} đ
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            {/* NHẬP MÃ GIẢM GIÁ */}
+            <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '16px', marginBottom: '25px', border: '1px solid #f1f2f6' }}>
+                <div style={{ fontWeight: '800', marginBottom: '12px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px', color: '#2d3436' }}>
+                    <FaTicketAlt color="#00b894" size={18} /> Mã Khuyến Mãi
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                    <input 
+                        type="text" 
+                        placeholder="Nhập mã ở đây..." 
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                        disabled={appliedVoucher != null}
+                        style={{ flex: 1, padding: '12px 15px', borderRadius: '10px', border: '1px solid #dfe6e9', background: '#fff', color: '#2d3436', outline: 'none', textTransform: 'uppercase', fontWeight: 'bold' }} 
+                    />
+                    {appliedVoucher ? (
+                        <button type="button" onClick={handleRemoveVoucher} style={{ background: '#ff7675', color: '#fff', border: 'none', padding: '0 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>Hủy</button>
+                    ) : (
+                        <button type="button" onClick={handleApplyVoucher} disabled={isCheckingVoucher} style={{ background: '#2d3436', color: '#fff', border: 'none', padding: '0 20px', borderRadius: '10px', fontWeight: 'bold', cursor: isCheckingVoucher ? 'not-allowed' : 'pointer' }}>
+                            {isCheckingVoucher ? '...' : 'Áp dụng'}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* TÍNH TOÁN */}
+            <div style={{ borderTop: '2px dashed #f1f2f6', paddingTop: '20px', marginBottom: '20px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'15px', color:'#636e72', fontWeight: '600' }}>
+                    <span>Tạm tính:</span> <span>{summary.tamTinh.toLocaleString()} đ</span>
+                </div>
+                
+                <div style={{ display:'flex', justifyContent:'space-between', color:'#636e72', fontWeight: '600', alignItems: 'center', marginBottom: '15px' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>Phí vận chuyển:</span> 
+                    <span style={{ color: summary.phiShip === 0 ? '#00b894' : '#2d3436' }}>
+                        {summary.phiShip === 0 ? 'Miễn phí' : `${summary.phiShip.toLocaleString()} đ`}
+                    </span>
+                </div>
+
+                {/* Dòng báo Freeship */}
+                {summary.phiShip > 0 && (
+                    <div style={{ marginBottom: '15px', fontSize: '0.85rem', color: '#e64a19', background: '#fff5f2', padding: '10px 15px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600' }}>
+                        <FaTruck size={16} /> Mua thêm {(FREE_SHIPPING_THRESHOLD - summary.tamTinh).toLocaleString()}đ để Freeship!
+                    </div>
+                )}
+
+                {/* Tiền Voucher giảm */}
+                {appliedVoucher && (
+                    <div style={{ display:'flex', justifyContent:'space-between', color:'#00b894', fontWeight: '800', alignItems: 'center' }}>
+                        <span>Voucher giảm:</span> 
+                        <span>- {appliedVoucher.soTienGiam.toLocaleString()} đ</span>
+                    </div>
+                )}
+            </div>
+
+            <div style={{ borderTop: '2px solid #f1f2f6', paddingTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+              <span style={{ fontSize: '1.2rem', fontWeight: '800', color: '#2d3436' }}>Tổng cộng:</span> 
+              <span style={{ fontSize: '1.8rem', fontWeight: '900', color: '#e64a19' }}>{tongCongCuoiCung.toLocaleString()} đ</span>
+            </div>
+
             <button 
                 type="submit" 
+                form="checkout-form"
                 disabled={isLoading}
-                style={{ marginTop: '20px', padding: '18px', background: isLoading ? '#ccc' : getButtonColor(), color: '#fff', fontWeight: 'bold', border: 'none', borderRadius: '50px', cursor: isLoading ? 'not-allowed' : 'pointer', fontSize: '1.1rem', boxShadow: '0 8px 15px rgba(0,0,0,0.1)', transition: '0.3s' }}
+                style={{ width: '100%', padding: '18px', background: isLoading ? '#b2bec3' : getButtonColor(), color: '#fff', fontWeight: '900', border: 'none', borderRadius: '16px', cursor: isLoading ? 'not-allowed' : 'pointer', fontSize: '1.1rem', transition: '0.3s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', boxShadow: '0 10px 20px rgba(230, 74, 25, 0.2)' }}
             >
-              {getButtonText()}
+              {isLoading ? 'ĐANG XỬ LÝ...' : (formData.phuongThuc === 'VNPAY' ? 'THANH TOÁN VNPAY' : 'CHỐT ĐƠN HÀNG')}
             </button>
-          </form>
+
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '20px', color: '#b2bec3', fontSize: '0.85rem', fontWeight: '600' }}>
+                <FaShieldAlt size={14} /> Thanh toán an toàn & bảo mật
+            </div>
+          </div>
+
         </div>
-
-        {/* CỘT PHẢI: HÓA ĐƠN */}
-        <div style={{ background: '#fff', padding: '30px', borderRadius: '15px', height: 'fit-content', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', position: 'sticky', top: '80px' }}>
-          <h3 style={{ fontSize: '1.3rem', marginBottom: '20px', color: '#2d3436' }}>Hóa đơn của bạn</h3>
-          
-          <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '20px', paddingRight: '5px' }}>
-              {checkoutItems.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', paddingBottom: '10px', borderBottom: '1px dashed #eee' }}>
-                  <div style={{ display:'flex', flexDirection:'column' }}>
-                    <span style={{ fontWeight: '500' }}>{item.tenMon}</span>
-                    <small style={{ color: '#888' }}>x {item.soLuong}</small>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <b style={{ color: '#2d3436' }}>{(item.gia * item.soLuong).toLocaleString()} đ</b>
-                  </div>
-                </div>
-              ))}
-          </div>
-
-          <div style={{ borderTop: '2px dashed #ddd', padding: '15px 0' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'10px', color:'#636e72' }}>
-                  <span>Tạm tính:</span> <span>{summary.tamTinh.toLocaleString()} đ</span>
-              </div>
-              <div style={{ display:'flex', justifyContent:'space-between', color:'#636e72' }}>
-                  <span>Phí vận chuyển:</span> <span>{SHIP_FEE.toLocaleString()} đ</span>
-              </div>
-          </div>
-
-          <div style={{ borderTop: '2px solid #e64a19', paddingTop: '20px', display: 'flex', justifyContent: 'space-between', fontSize: '1.4rem', fontWeight: 'bold', color: '#e64a19' }}>
-            <span>TỔNG CỘNG:</span> <span>{summary.tongCong.toLocaleString()} đ</span>
-          </div>
-          <p style={{ fontSize: '0.8rem', color: '#95a5a6', marginTop: '20px', fontStyle: 'italic', textAlign: 'center' }}>* Vui lòng kiểm tra kỹ thông tin trước khi đặt</p>
-        </div>
-
       </div>
+      
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f2f6; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a4b0be; }
+      `}</style>
     </div>
   );
 }

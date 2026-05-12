@@ -14,7 +14,6 @@ namespace AnFoodAPI.Models
             DanhGia = new HashSet<DanhGia>();
             HinhAnhMonAns = new HashSet<HinhAnhMonAn>();
             ChiTietDonHangs = new HashSet<ChiTietDonHang>();
-            
             HanhViNguoiDungs = new HashSet<HanhViNguoiDung>(); 
             YeuThiches = new HashSet<YeuThich>();
             GoiYAis = new HashSet<GoiYAi>();
@@ -27,8 +26,11 @@ namespace AnFoodAPI.Models
         [Column("ten_mon")]
         public string TenMon { get; set; } = null!;
 
-        [Column("gia")]
-        public decimal Gia { get; set; }
+        [Column("gia", TypeName = "decimal(18, 0)")]
+        public decimal? Gia { get; set; } // Giá bán
+
+        [Column("gia_von", TypeName = "decimal(18, 0)")]
+        public decimal? GiaVon { get; set; } // Giá vốn (Chuẩn ERP)
 
         [Column("mo_ta")]
         public string? MoTa { get; set; }
@@ -42,35 +44,26 @@ namespace AnFoodAPI.Models
         [Column("trang_thai")]
         public string? TrangThai { get; set; }
 
-        [Column("ngay_tao")]
+        [Column("ngay_tao", TypeName = "datetime")]
         public DateTime? NgayTao { get; set; }
 
-        // Các cột bổ sung
         [Column("ban_chay")]
         public int? BanChay { get; set; }
+        
+        // 👉 ĐÃ FIX: Khai báo cột da_ban để C# hứng dữ liệu từ SQL
+        [Column("da_ban")]
+        public int? DaBan { get; set; }
 
-        [Column("ton_kho")]
-        public int? TonKho { get; set; }
-
-        [Column("la_mon_nong")]
-        public int? LaMonNong { get; set; }
-
-        [Column("la_do_uong_mat")]
-        public int? LaDoUongMat { get; set; }
-
-        // 👇 THUỘC TÍNH MỚI CHO XÓA MỀM (Khớp với cột IsDeleted trong Database)
         [Column("IsDeleted")]
         public bool IsDeleted { get; set; } = false; 
-
-        // --- Quan hệ ---
+        
+        // --- Quan hệ (Navigation Properties) ---
         [ForeignKey("MaDanhMuc")]
         public virtual DanhMuc? MaDanhMucNavigation { get; set; }
-
         public virtual ICollection<ChiTietGioHang> ChiTietGioHangs { get; set; }
         public virtual ICollection<ChiTietDonHang> ChiTietDonHangs { get; set; }
         public virtual ICollection<DanhGia> DanhGia { get; set; }
         public virtual ICollection<HinhAnhMonAn> HinhAnhMonAns { get; set; }
-        
         public virtual ICollection<YeuThich> YeuThiches { get; set; }
         public virtual ICollection<GoiYAi> GoiYAis { get; set; }
         public virtual ICollection<HanhViNguoiDung> HanhViNguoiDungs { get; set; } 

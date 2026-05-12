@@ -69,8 +69,14 @@ function PaymentResult({ clearCart }) {
             
             // Dọn dẹp
             localStorage.removeItem('cartItems');   // Xóa giỏ hàng
+            localStorage.removeItem('checkoutItems'); // Xóa checkoutItems
             localStorage.removeItem('pendingOrder'); // Xóa đơn tạm
-            clearCart(); // Reset state giỏ hàng ở App.jsx
+            
+            // Dispatch sự kiện để App.jsx cập nhật lại số lượng giỏ hàng trên Header
+            window.dispatchEvent(new Event('cart-cleared')); 
+            window.dispatchEvent(new Event('cart-updated'));
+
+            if (clearCart) clearCart(); // Gọi hàm props nếu có
             
             toast.success("🎉 Thanh toán thành công!");
 

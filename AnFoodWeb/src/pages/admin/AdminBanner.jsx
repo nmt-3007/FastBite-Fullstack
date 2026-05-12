@@ -159,7 +159,7 @@ const AdminBanner = () => {
             {/* Header */}
             <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', marginBottom: '20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <h2 style={{ margin: 0, color: '#333', display:'flex', alignItems:'center', gap:'10px' }}>
-                    <FaImages color="#e64a19" /> Quản Lý Banner
+                    <FaImages color="#e64a19" /> Quản Lý Khuyến Mãi
                 </h2>
                 <span style={{ background:'#eee', padding:'5px 15px', borderRadius:'20px', fontSize:'0.9rem', fontWeight:'bold' }}>
                     {banners.length} Banner

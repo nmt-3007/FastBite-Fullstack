@@ -12,6 +12,9 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import PrivateRoute from './components/PrivateRoute';
 
+// 👉 TÍNH NĂNG MỚI: TÍCH HỢP CHATBOT
+import ChatWidget from './components/ChatWidget'; 
+
 // --- LAYOUTS ---
 import AdminLayout from './layouts/AdminLayout';
 
@@ -28,6 +31,8 @@ import Suggest from './pages/client/Suggest';
 import Register from './pages/client/Register'; 
 import Profile from './pages/client/Profile';
 import PaymentResult from './pages/client/PaymentResult';
+import Favorites from './pages/client/Favorites'; 
+import AiRecommendedList from './components/AiRecommendedList'; 
 
 // --- PAGES ADMIN ---
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -38,6 +43,7 @@ import AdminCustomers from './pages/admin/AdminCustomers';
 import AdminInventory from './pages/admin/AdminInventory'; 
 import AdminContact from './pages/admin/AdminContact';
 import AdminBanner from './pages/admin/AdminBanner';
+import AdminVoucher from './pages/admin/AdminVoucher';
 
 // HÀM HELPER
 const normalizeUser = (userData) => {
@@ -57,20 +63,22 @@ const normalizeUser = (userData) => {
   };
 };
 
-// LAYOUT KHÁCH HÀNG
-const CustomerLayout = ({ cartCount, user, onLogout }) => (
+// LAYOUT KHÁCH HÀNG (Đã fix UI khoảng trắng)
+const CustomerLayout = ({ cartCount, user, onLogout, foods, addToCart, cartItems }) => (
   <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
     <Header cartCount={cartCount} user={user} onLogout={onLogout} />
-    <main style={{ flex: 1, paddingTop: '100px', backgroundColor: '#f9f9f9' }}>
+    <main style={{ flex: 1, paddingTop: '115px' }}>
       <Outlet />
     </main>
     <Footer />
+    
+    {/* 👉 TÍNH NĂNG MỚI: HIỂN THỊ BONG BÓNG CHAT Ở GÓC MÀN HÌNH (ĐÃ CẤP VŨ KHÍ) */}
+    <ChatWidget foods={foods} addToCart={addToCart} />
   </div>
 );
 
 // --- COMPONENT APP ---
 function App() {
-  // 🔥 KHỞI TẠO STATE AN TOÀN (Luôn là mảng rỗng, không bao giờ là null)
   const [foods, setFoods] = useState([]);
   const [user, setUser] = useState(() => {
     try {
@@ -83,19 +91,15 @@ function App() {
     try {
         if (localStorage.getItem('user')) return []; 
         const savedCart = localStorage.getItem('cartItems');
-        // Kiểm tra kỹ xem có phải mảng không
         const parsed = savedCart ? JSON.parse(savedCart) : [];
         return Array.isArray(parsed) ? parsed : [];
     } catch { return []; }
   });
 
-  // Fetch giỏ hàng từ DB
   const fetchCartFromDB = async (userId) => {
     if (!userId) return;
     try {
-      // Dùng axiosClient thay vì axios thường
       const res = await axiosClient.get(`/GioHang/${userId}`);
-      // 🔥 BỨC TƯỜNG LỬA: Nếu API trả về rác, ta vẫn lấy mảng rỗng
       const cartData = Array.isArray(res.data) ? res.data : [];
       setCartItems(cartData);
     } catch (err) { 
@@ -104,7 +108,6 @@ function App() {
     }
   };
 
-  // Đồng bộ giỏ hàng Local -> DB
   const syncLocalCartToDB = async (userId) => {
     let localCart = [];
     try {
@@ -129,17 +132,15 @@ function App() {
     }
   };
 
-  // --- 🔥 SỬA CHÍNH: Lấy Foods an toàn ---
   useEffect(() => {
     const fetchFoods = async () => {
       try {
         const res = await axiosClient.get(`/MonAn`);
-        // Luôn đảm bảo foods là mảng
         const safeFoods = Array.isArray(res.data) ? res.data : [];
         setFoods(safeFoods);
       } catch (error) {
         console.error("Lỗi kết nối API MonAn:", error);
-        setFoods([]); // Fallback
+        setFoods([]); 
       }
     };
     fetchFoods();
@@ -149,7 +150,6 @@ function App() {
     if (user && user.id) {
       fetchCartFromDB(user.id);
     } else {
-      // Logic lấy giỏ hàng local an toàn
       try {
         const cartString = localStorage.getItem('cartItems');
         const parsed = cartString ? JSON.parse(cartString) : [];
@@ -181,6 +181,19 @@ function App() {
        alert("Sản phẩm này hiện đang tạm hết hàng!");
        return;
     }
+
+    // ==============================================================
+    // 👉 TÍNH NĂNG MỚI: THEO DÕI HÀNH VI "THÊM VÀO GIỎ" (AddToCart)
+    // ==============================================================
+    try {
+      // Gắn try-catch và fire-and-forget (không await) để web vẫn mượt
+      axiosClient.post('/Tracking/Record', {
+        maNguoiDung: (user && user.id) ? user.id : 0, // Nếu chưa đăng nhập thì gửi 0
+        maMon: product.maMon,
+        hanhVi: "AddToCart"
+      }).catch(err => console.log("Lỗi tracking giỏ hàng (ẩn danh):", err));
+    } catch (err) {}
+    // ==============================================================
 
     const safeCartItems = Array.isArray(cartItems) ? cartItems : [];
     let newCart = [...safeCartItems];
@@ -217,13 +230,16 @@ function App() {
       <Routes>
         <Route element={
             <CustomerLayout 
-                // Code bảo vệ tính tổng giỏ hàng (Đã chuẩn hóa)
                 cartCount={Array.isArray(cartItems) ? cartItems.reduce((total, item) => total + (item.quantity || item.soLuong || 1), 0) : 0}
                 user={user} 
                 onLogout={handleLogout} 
+                foods={foods}          
+                addToCart={addToCart}
+                cartItems={cartItems}   
             />
         }>
-          <Route path="/" element={<Home foods={foods} />} />
+          {/* Đã bổ sung addToCart cho trang Home */}
+          <Route path="/" element={<Home foods={foods} addToCart={addToCart} />} />
           <Route path="menu" element={<Menu addToCart={addToCart} />} />
           <Route path="cart" element={<Cart user={user} />} />
           <Route path="checkout" element={<Checkout cartItems={cartItems} clearCart={clearCart} />} />
@@ -235,6 +251,7 @@ function App() {
           <Route path="payment-result" element={<PaymentResult clearCart={clearCart} />} />
           <Route path="contact" element={<Contact />} />
           <Route path="suggest" element={<Suggest addToCart={addToCart} />} />
+          <Route path="favorites" element={<Favorites user={user} addToCart={addToCart} />} />  
         </Route>
 
         <Route element={<PrivateRoute user={user} requiredRole="admin" />}>
@@ -248,6 +265,7 @@ function App() {
                <Route path="inventory" element={<AdminInventory />} />
                <Route path="feedbacks" element={<AdminContact />} />
                <Route path="banner" element={<AdminBanner />} />
+               <Route path="voucher" element={<AdminVoucher />} />
             </Route>
         </Route>
       </Routes>

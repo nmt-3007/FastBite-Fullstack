@@ -296,16 +296,22 @@ function AdminContact() {
         )}
       </div>
 
-      {/* CSS Hover Effect */}
+      {/* CSS Hover Effect & CHỐNG XẸP SVG */}
       <style>{`
         .hover-row:hover { background-color: #fcfcfc; }
         input:focus { border-color: #e64a19 !important; box-shadow: 0 0 0 3px rgba(230, 74, 25, 0.1); }
+        
+        /* 🔥 BÍ KÍP CHỐNG MẤT ICON 🔥 */
+        button svg, a svg {
+            flex-shrink: 0 !important;
+            display: inline-block !important;
+        }
       `}</style>
     </div>
   );
 }
 
-// STYLES HELPER
+// STYLES HELPER (Đã tối ưu lại padding để bung icon)
 const statCardStyle = (bg, color) => ({
     background: bg, color: color, padding: '20px', borderRadius: '15px', 
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -314,9 +320,10 @@ const statCardStyle = (bg, color) => ({
 
 const actionBtnStyle = (bg, color) => ({
     width: '35px', height: '35px', borderRadius: '10px', 
-    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', 
     background: bg, color: color, border: 'none', cursor: 'pointer', 
-    transition: '0.2s', boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+    transition: '0.2s', boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+    padding: 0, textDecoration: 'none' /* Ép padding = 0 và bỏ gạch chân cho thẻ a */
 });
 
 export default AdminContact;
