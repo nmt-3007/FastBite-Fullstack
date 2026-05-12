@@ -10,9 +10,8 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 
 // ==========================================
-// 1. CẤU HÌNH DATABASE (ĐÃ SỬA ĐỂ ĐỌC TỪ APPSETTINGS.JSON)
+// 1. CẤU HÌNH DATABASE (ĐỌC TỪ APPSETTINGS.JSON HOẶC BIẾN MÔI TRƯỜNG RAILWAY)
 // ==========================================
-// Tự động lấy chuỗi kết nối "DefaultConnection" từ appsettings.json
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
 builder.Services.AddDbContext<AnshopDbContext>(options =>
@@ -57,13 +56,12 @@ builder.Services.AddAuthentication(options =>
 });
 
 // ==========================================
-// 4. CẤU HÌNH CORS (ĐÃ MỞ KHÓA CHO VERCEL)
+// 4. CẤU HÌNH CORS (ĐÃ MỞ KHÓA)
 // ==========================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReact", policy =>
     {
-        // Cho phép MỌI domain (Vercel, Localhost) gọi vào mà không bị chặn
         policy.SetIsOriginAllowed(_ => true) 
               .AllowAnyMethod()
               .AllowAnyHeader()
@@ -85,7 +83,6 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "AnFoodAPI", Version = "v1" });
 
-    // 👇 DÒNG NÀY LÀ THẦN DƯỢC CHỮA LỖI TRẮNG MÀN HÌNH ĐÂY Ạ 👇
     c.CustomSchemaIds(type => type.FullName);
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -115,6 +112,26 @@ builder.Services.AddHttpClient<IWeatherService, WeatherService>();
 // 6. KHỞI CHẠY APP
 // ==========================================
 var app = builder.Build();
+
+// ==========================================
+// 🚀 TỰ ĐỘNG UPDATE DATABASE KHI CHẠY (CHUẨN PRODUCTION)
+// ==========================================
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<AnshopDbContext>();
+        // Lệnh này sẽ tự động kết nối vào MySQL trên Railway và tạo toàn bộ bảng!
+        context.Database.Migrate(); 
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Lỗi nghiêm trọng khi tự động tạo Database: {Message}", ex.Message);
+    }
+}
+// ==========================================
 
 // Đã đưa Swagger ra ngoài if để khi Deploy lên mạng vẫn dùng được
 app.UseSwagger();
