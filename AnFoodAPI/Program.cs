@@ -10,10 +10,9 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 
 // ==========================================
-// 1. CẤU HÌNH DATABASE (ƯU TIÊN BIẾN MÔI TRƯỜNG)
+// 1. CẤU HÌNH DATABASE (ÉP NHẬN RAILWAY)
 // ==========================================
-// Sử dụng toán tử ?? để ưu tiên lấy DB_CONNECTION từ Railway trước, 
-// nếu không thấy sẽ lấy DefaultConnection trong appsettings.json
+// 👉 ĐÃ FIX: Bắt buộc C# tìm biến 'DB_CONNECTION' trên Railway trước, nếu không có mới dùng localhost ở nhà
 var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION") 
                        ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
@@ -59,12 +58,13 @@ builder.Services.AddAuthentication(options =>
 });
 
 // ==========================================
-// 4. CẤU HÌNH CORS (MỞ KHÓA CHO FRONTEND)
+// 4. CẤU HÌNH CORS (ĐÃ MỞ KHÓA CHO VERCEL)
 // ==========================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReact", policy =>
     {
+        // Cho phép MỌI domain (Vercel, Localhost) gọi vào mà không bị chặn
         policy.SetIsOriginAllowed(_ => true) 
               .AllowAnyMethod()
               .AllowAnyHeader()
@@ -79,13 +79,14 @@ builder.Services.AddControllers()
     });
 
 // ==========================================
-// 5. CẤU HÌNH SWAGGER (TÀI LIỆU API)
+// 5. CẤU HÌNH SWAGGER 
 // ==========================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "AnFoodAPI", Version = "v1" });
 
+    // DÒNG NÀY LÀ THẦN DƯỢC CHỮA LỖI TRẮNG MÀN HÌNH ĐÂY Ạ
     c.CustomSchemaIds(type => type.FullName);
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -112,31 +113,37 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddHttpClient<IWeatherService, WeatherService>();
 
 // ==========================================
-// 6. KHỞI CHẠY ỨNG DỤNG
+// 6. KHỞI CHẠY APP
 // ==========================================
 var app = builder.Build();
 
-// --- TỰ ĐỘNG UPDATE DATABASE KHI STARTUP ---
+// ==========================================
+// 🚀 TỰ ĐỘNG UPDATE DATABASE KHI CHẠY (CHUẨN PRODUCTION)
+// ==========================================
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     try
     {
         var context = services.GetRequiredService<AnshopDbContext>();
+        // Lệnh này sẽ tự động kết nối vào MySQL trên Railway và tạo toàn bộ bảng!
         context.Database.Migrate(); 
     }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Lỗi khi tự động Migrate Database: {Message}", ex.Message);
+        logger.LogError(ex, "Lỗi nghiêm trọng khi tự động tạo Database: {Message}", ex.Message);
     }
 }
-// ------------------------------------------
+// ==========================================
 
+// Đã đưa Swagger ra ngoài if để khi Deploy lên mạng vẫn dùng được
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseStaticFiles();
+
+// Kích hoạt CORS
 app.UseCors("AllowReact");
 
 app.UseAuthentication(); 

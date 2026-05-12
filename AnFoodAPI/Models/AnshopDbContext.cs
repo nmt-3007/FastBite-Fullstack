@@ -48,8 +48,8 @@ public partial class AnshopDbContext : DbContext
     public DbSet<AiLichSuHanhVi> AiLichSuHanhVis { get; set; }
     public virtual DbSet<LichSuChat> LichSuChats { get; set; }
 
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        => optionsBuilder.UseMySql("server=localhost;database=anshop_db;user=root", Microsoft.EntityFrameworkCore.ServerVersion.Parse("10.4.32-mariadb"));
+    // protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    //     => optionsBuilder.UseMySql("server=localhost;database=anshop_db;user=root", Microsoft.EntityFrameworkCore.ServerVersion.Parse("10.4.32-mariadb"));
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
