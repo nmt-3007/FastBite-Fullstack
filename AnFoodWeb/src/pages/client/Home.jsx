@@ -268,7 +268,7 @@ const Home = ({ addToCart }) => {
           <div style={{ flex: '1.5 1 500px', display: 'flex', justifyContent: 'flex-end', position: 'relative' }}> 
             <div style={{ position: 'absolute', width: '100%', height: '100%', backgroundColor: '#ffe0b2', borderRadius: '50%', filter: 'blur(90px)', zIndex: 0, top: '0', right: '0' }}></div>
             <div style={{ width: '100%', minWidth: '550px', maxWidth: '900px', aspectRatio: '16/11', borderRadius: '36px', overflow: 'hidden', boxShadow: '0 30px 60px rgba(230, 74, 25, 0.15)', backgroundColor: '#fff', position: 'relative', zIndex: 1 }}>
-                <img src="./public/sales/banner.png" alt="Banner Sản Phẩm FastBite" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src="/sales/banner.png" alt="Banner Sản Phẩm FastBite" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
           </div>
         </div>
