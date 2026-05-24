@@ -47,7 +47,7 @@ function AdminDashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await axiosAdmin.get(`/ThongKe/Dashboard?timeSpan=${timeSpan}&startDate=${startDate}&endDate=${endDate}`);
+      const res = await axiosAdmin.get(`/api/ThongKe/Dashboard?timeSpan=${timeSpan}&startDate=${startDate}&endDate=${endDate}`);
       
       if (!res) throw new Error("Không nhận được dữ liệu");
 
@@ -189,7 +189,7 @@ function AdminDashboard() {
                         btn.innerHTML = `<span class="fa-spin" style="display:inline-block">⚙️</span> Đang huấn luyện...`;
                         
                         try {
-                            const res = await axiosAdmin.post('/Recommendation/TrainAI');
+                            const res = await axiosAdmin.post('/api/Recommendation/TrainAI');
                             if (res && res.success) {
                                 toast.success("🧠 " + res.message, { position: "top-center", autoClose: 3000, theme: "colored" });
                             } else {

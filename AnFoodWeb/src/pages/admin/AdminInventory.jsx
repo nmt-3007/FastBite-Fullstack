@@ -44,7 +44,7 @@ const AdminInventory = () => {
     const fetchProducts = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_HOST}/api/MonAn`);
+            const res = await axios.get(`${API_HOST}/MonAn`);
             const data = Array.isArray(res.data) ? res.data : (res.result || []);
             
             const processedData = data.map(p => ({
@@ -74,14 +74,14 @@ const AdminInventory = () => {
 
     const fetchHistoryPhieu = async () => {
         try {
-            const res = await axios.get(`${API_HOST}/api/PhieuKho`);
+            const res = await axios.get(`${API_HOST}/PhieuKho`);
             setHistoryPhieu(res.data);
         } catch (error) { toast.error("Không tải được danh sách phiếu!"); }
     };
 
     const fetchHistory = async (maMon) => {
         try {
-            const res = await axios.get(`${API_HOST}/api/KhoHang/LichSu/${maMon}`);
+            const res = await axios.get(`${API_HOST}/KhoHang/LichSu/${maMon}`);
             setHistoryData(res.data);
         } catch (error) { toast.error("Không tải được lịch sử!"); }
     };
@@ -123,7 +123,7 @@ const AdminInventory = () => {
                     calculatedExpiry = dayjs().add(parseInt(expiryDays), 'day').toISOString();
                 }
 
-                await axios.post(`${API_HOST}/api/KhoHang/NhapHang`, {
+                await axios.post(`${API_HOST}/KhoHang/NhapHang`, {
                     maMon: selectedProduct.maMon,
                     soLuong: parseInt(amount),
                     giaNhap: parseFloat(price),
@@ -131,7 +131,7 @@ const AdminInventory = () => {
                     ngayHetHan: calculatedExpiry
                 });
             } else {
-                await axios.post(`${API_HOST}/api/KhoHang/CapNhat`, {
+                await axios.post(`${API_HOST}/KhoHang/CapNhat`, {
                     maMon: selectedProduct.maMon,
                     soLuongThayDoi: -parseInt(amount),
                     ghiChu: note || 'Xuất hủy',
