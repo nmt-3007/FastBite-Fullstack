@@ -28,14 +28,24 @@ function AdminFood() {
   });
 
   // 🟢 CẤU HÌNH API
-  const API_HOST = import.meta.env.VITE_API_URL || 'http://localhost:5010';
+  const API_HOST = import.meta.env.VITE_API_ROOT || 'http://localhost:5010';
 
   const getImageUrl = (imagePath) => {
-    if (!imagePath) return null; 
-    if (imagePath.startsWith('http')) return imagePath;
-    const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
-    return `${API_HOST}${path}`;
-  };
+
+  if (!imagePath) {
+    return 'https://placehold.co/50?text=Food';
+  }
+
+  if (imagePath.startsWith('http')) {
+    return imagePath;
+  }
+
+  const path = imagePath.startsWith('/')
+    ? imagePath
+    : `/${imagePath}`;
+
+  return `${API_HOST}${path}`;
+};
 
   useEffect(() => {
     fetchCategories();
