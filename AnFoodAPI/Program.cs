@@ -116,10 +116,17 @@ builder.Services.AddHttpClient<IWeatherService, WeatherService>();
 // Thêm đoạn này vào Program.cs
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowVercel",
-        policy => policy.WithOrigins("https://fast-bite-fullstack.vercel.app") // Địa chỉ Vercel của sếp
-                        .AllowAnyMethod()
-                        .AllowAnyHeader());
+    options.AddPolicy("AllowReact", policy =>
+    {
+        policy
+            .WithOrigins(
+                "https://fast-bite-fullstack.vercel.app",
+                "http://localhost:5173"
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
 });
 // ==========================================
 // 6. KHỞI CHẠY APP
@@ -154,7 +161,6 @@ app.UseStaticFiles();
 
 // Kích hoạt CORS
 app.UseCors("AllowReact");
-app.UseCors("AllowVercel");
 app.UseAuthentication(); 
 app.UseAuthorization();  
 
