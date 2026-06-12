@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AnFoodAPI.Models;
 using AnFoodAPI.DTOs; // Đảm bảo bạn đã có folder DTOs hoặc namespace này
@@ -359,7 +359,7 @@ namespace AnFoodAPI.Controllers
                 // Trả về false nếu chưa cấu hình email để code không chết
                 // Trong môi trường test, ta có thể tạm return true và in OTP ra console
                 Console.WriteLine($"[DEBUG MODE] OTP gửi đến {toEmail}: {body}"); 
-                return true; 
+                return false; 
             }
         }
     }

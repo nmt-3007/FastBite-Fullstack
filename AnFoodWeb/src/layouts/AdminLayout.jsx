@@ -98,7 +98,7 @@ function AdminLayout() {
           <SidebarLink to="/admin/banner" icon={<FaBullhorn />} label="Banner Quảng Cáo" />
           <SidebarLink to="/admin/voucher" icon={<FaTicketAlt />} label="Mã Khuyến Mãi" />
           
-          <SidebarLink to="/admin/notifications" icon={<FaBell />} label="Thông Báo" />
+          
           <SidebarLink to="/admin/feedbacks" icon={<FaClipboardList />} label="Phản Hồi" />
         </nav>
 

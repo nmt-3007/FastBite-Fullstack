@@ -47,7 +47,7 @@ function AdminDashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await axiosAdmin.get(`/api/ThongKe/Dashboard?timeSpan=${timeSpan}&startDate=${startDate}&endDate=${endDate}`);
+      const res = await axiosAdmin.get(`/ThongKe/Dashboard?timeSpan=${timeSpan}&startDate=${startDate}&endDate=${endDate}`);
       
       if (!res) throw new Error("Không nhận được dữ liệu");
 
