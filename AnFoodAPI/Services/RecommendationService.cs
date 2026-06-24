@@ -61,11 +61,27 @@ namespace AnFoodAPI.Services
                             ApproximationRank = 100  
                         }));
 
+
+                // Chia dữ liệu thành tập huấn luyện (80%) và tập kiểm thử (20%) để đánh giá
+                var dataSplit = _mlContext.Data.TrainTestSplit(trainingDataView, testFraction: 0.2);
+                var trainData = dataSplit.TrainSet;
+                var testData = dataSplit.TestSet;
+
                 Console.WriteLine("🚀 Bắt đầu huấn luyện AI ngầm (Không gián đoạn)...");
-                var model = pipeline.Fit(trainingDataView);
+                var model = pipeline.Fit(trainData);
+
+                // Đánh giá mô hình trên tập kiểm thử
+                var predictions = model.Transform(testData);
+                var metrics = _mlContext.Recommendation().Evaluate(predictions, labelColumnName: nameof(ProductEntry.Label), scoreColumnName: "Score");
+
+                Console.WriteLine($"\n--- 📊 KẾT QUẢ ĐÁNH GIÁ MÔ HÌNH ML.NET ---");
+                Console.WriteLine($"RMSE (Root Mean Squared Error): {metrics.RootMeanSquaredError:F4} (Càng gần 0 càng tốt)");
+                Console.WriteLine($"R-Squared: {metrics.RSquared:F4} (Càng gần 1 càng tốt)");
+                Console.WriteLine($"MAE (Mean Absolute Error): {metrics.MeanAbsoluteError:F4}");
+                Console.WriteLine($"------------------------------------------\n");
 
                 // 🔥 BƯỚC 1: Lưu Model mới vào file NHÁP (Tránh khóa file chính)
-                _mlContext.Model.Save(model, trainingDataView.Schema, _tempModelPath);
+                _mlContext.Model.Save(model, trainData.Schema, _tempModelPath);
                 
                 // 🔥 BƯỚC 2: Khởi tạo một Bộ Não mới tinh từ file nháp lên RAM
                 ITransformer newTrainedModel = _mlContext.Model.Load(_tempModelPath, out var modelSchema);
@@ -90,7 +106,11 @@ namespace AnFoodAPI.Services
                     File.Delete(_tempModelPath);
                 }
                 
-                return "✅ Huấn luyện thành công! AI đã được cập nhật bản mới nhất mà không gây gián đoạn.";
+                return $"✅ Huấn luyện thành công! AI đã cập nhật không gián đoạn.\n" +
+                $"--- 📊 KẾT QUẢ ĐÁNH GIÁ MÔ HÌNH ---\n" +
+                $"RMSE : {metrics.RootMeanSquaredError:F4}\n" +
+                $"R2   : {metrics.RSquared:F4}\n" +
+                $"MAE  : {metrics.MeanAbsoluteError:F4}";
             }
             catch (Exception ex)
             {

@@ -33,6 +33,8 @@ namespace AnFoodAPI.Models
         [Column("ma_vai_tro")]
         public int? MaVaiTro { get; set; }
 
+        
+
         [Column("ngay_tao")]
         public DateTime? NgayTao { get; set; }
 
@@ -66,5 +68,7 @@ namespace AnFoodAPI.Models
 
         [ForeignKey("MaVaiTro")]
         public virtual VaiTro? MaVaiTroNavigation { get; set; }
+        
+
     }
 }
