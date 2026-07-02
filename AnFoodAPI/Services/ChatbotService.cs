@@ -22,7 +22,9 @@ namespace AnFoodAPI.Services
         private readonly AnshopDbContext _context;
         private readonly IRecommendationService _aiService;
         private readonly IConfiguration _configuration;
-        private readonly string _apiKey;
+        
+        // Thay vì 1 string, mình dùng 1 List để chứa nhiều Key
+        private readonly List<string> _apiKeys;
 
         public ChatbotService(
             AnshopDbContext context,
@@ -33,18 +35,31 @@ namespace AnFoodAPI.Services
             _aiService = aiService;
             _configuration = configuration;
 
-            _apiKey =
-    Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-    ?? _configuration["GeminiAI:ApiKey"];
+            // Lấy chuỗi chứa nhiều Key (phân cách bằng dấu phẩy)
+            string keysString = Environment.GetEnvironmentVariable("GEMINI_API_KEYS")
+                                ?? _configuration["GeminiAI:ApiKeys"];
 
-if (string.IsNullOrWhiteSpace(_apiKey))
-{
-    throw new Exception("Không tìm thấy Gemini API Key.");
-}
+            if (string.IsNullOrWhiteSpace(keysString))
+            {
+                throw new Exception("Không tìm thấy cấu hình Gemini API Keys.");
+            }
+
+            // Cắt chuỗi thành mảng các Key sạch sẽ
+            _apiKeys = keysString.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                 .Select(k => k.Trim())
+                                 .ToList();
+
+            if (!_apiKeys.Any())
+            {
+                throw new Exception("Danh sách Gemini API Keys trống.");
+            }
         }
 
         public async Task<AiResponseDto> LayPhanHoiTuAiAsync(int? maNguoiDung, string cauHoi)
         {
+            // Khai báo sẵn list ID fallback để lỡ AI sập, giao diện vẫn có món ăn để hiển thị
+            List<int> fallbackSuggestedIds = new List<int>();
+
             try
             {
                 var allActiveFoods = await _context.MonAns
@@ -78,6 +93,7 @@ if (string.IsNullOrWhiteSpace(_apiKey))
                             price = m.Gia,
                             tag = "Cá nhân hóa theo ML.NET"
                         });
+                        fallbackSuggestedIds.Add(m.MaMon); // Lưu lại ID
                     }
                 }
                 else
@@ -96,11 +112,11 @@ if (string.IsNullOrWhiteSpace(_apiKey))
                             price = m.Gia,
                             tag = "Bán chạy nhất"
                         });
+                        fallbackSuggestedIds.Add(m.MaMon); // Lưu lại ID
                     }
                 }
 
                 string duLieuMenu = JsonSerializer.Serialize(top5Foods);
-
                 string lichSuChat = "";
 
                 if (maNguoiDung.HasValue && maNguoiDung.Value > 0)
@@ -140,19 +156,17 @@ Không được thêm giải thích.
 
 Ưu tiên tư vấn các món trong TOP 5.";
 
-                string fullPrompt =
-                    $"{promptSystem}\n\nLỊCH SỬ:\n{lichSuChat}\n\nKhách hỏi:\n{cauHoi}";
+                string fullPrompt = $"{promptSystem}\n\nLỊCH SỬ:\n{lichSuChat}\n\nKhách hỏi:\n{cauHoi}";
 
                 using var client = new HttpClient();
+                client.Timeout = TimeSpan.FromSeconds(120);
+                client.DefaultRequestHeaders.Add("User-Agent", "FastBite-AI");
 
-                    client.Timeout = TimeSpan.FromSeconds(120);
+                // THUẬT TOÁN ROUND-ROBIN: Random bốc 1 Key từ danh sách
+                Random rnd = new Random();
+                string selectedApiKey = _apiKeys[rnd.Next(_apiKeys.Count)];
 
-                    client.DefaultRequestHeaders.Add(
-                        "User-Agent",
-                        "FastBite-AI");
-
-                string url =
-                    $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={_apiKey}";
+                string url = $"[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=){selectedApiKey}";
 
                 var requestBody = new
                 {
@@ -160,19 +174,10 @@ Không được thêm giải thích.
                     {
                         new
                         {
-                            parts = new[]
-                            {
-                                new
-                                {
-                                    text = fullPrompt
-                                }
-                            }
+                            parts = new[] { new { text = fullPrompt } }
                         }
                     },
-                    generationConfig = new
-                    {
-                        responseMimeType = "application/json"
-                    }
+                    generationConfig = new { responseMimeType = "application/json" }
                 };
 
                 var content = new StringContent(
@@ -181,19 +186,24 @@ Không được thêm giải thích.
                     "application/json");
 
                 var response = await client.PostAsync(url, content);
+                string responseString = await response.Content.ReadAsStringAsync();
 
-                string responseString =
-                    await response.Content.ReadAsStringAsync();
+                // Bắt lỗi 429 ngay tại đây nếu xui xẻo Key được bốc trúng đang bị giới hạn
+                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    return new AiResponseDto
+                    {
+                        message = "Dạ hệ thống AI đang bận xử lý do quá tải, bạn vui lòng chờ 1 phút rồi nhắn lại nhé! ⏳",
+                        suggestedProductIds = fallbackSuggestedIds // Vẫn trả về món ăn để giao diện không bị trống!
+                    };
+                }
 
                 if (!response.IsSuccessStatusCode)
                 {
                     return new AiResponseDto
                     {
-                        message =
-$@"Gemini API Error
-
+                        message = $@"Gemini API Error
 HTTP: {(int)response.StatusCode}
-
 {responseString}"
                     };
                 }
@@ -201,45 +211,31 @@ HTTP: {(int)response.StatusCode}
                 using (JsonDocument doc = JsonDocument.Parse(responseString))
                 {
                     if (!doc.RootElement.TryGetProperty("candidates", out var candidates))
-{
-    return new AiResponseDto
-    {
-        message = "Gemini không trả về dữ liệu."
-    };
-}
-
-if (candidates.GetArrayLength() == 0)
-{
-    return new AiResponseDto
-    {
-        message = "Gemini không có phản hồi."
-    };
-}
-
-string aiJson = candidates[0]
-    .GetProperty("content")
-    .GetProperty("parts")[0]
-    .GetProperty("text")
-    .GetString();
-
-                    var options = new JsonSerializerOptions
                     {
-                        PropertyNameCaseInsensitive = true
-                    };
+                        return new AiResponseDto { message = "Gemini không trả về dữ liệu." };
+                    }
 
-                    return JsonSerializer.Deserialize<AiResponseDto>(
-                        aiJson,
-                        options);
+                    if (candidates.GetArrayLength() == 0)
+                    {
+                        return new AiResponseDto { message = "Gemini không có phản hồi." };
+                    }
+
+                    string aiJson = candidates[0]
+                        .GetProperty("content")
+                        .GetProperty("parts")[0]
+                        .GetProperty("text")
+                        .GetString();
+
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    return JsonSerializer.Deserialize<AiResponseDto>(aiJson, options);
                 }
             }
             catch (Exception ex)
             {
                 return new AiResponseDto
                 {
-                    message =
-$@"CHATBOT EXCEPTION
-
-{ex}"
+                    message = "Dạ hệ thống trợ lý ảo đang được bảo trì đột xuất, anh/chị thông cảm giúp em nhé!",
+                    suggestedProductIds = fallbackSuggestedIds // Vẫn nhét list món ăn vào đây luôn cho an toàn
                 };
             }
         }
