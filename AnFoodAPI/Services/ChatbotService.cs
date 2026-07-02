@@ -35,7 +35,7 @@ namespace AnFoodAPI.Services
 
             string keysString = Environment.GetEnvironmentVariable("GEMINI_API_KEYS") 
                                 ?? _configuration["GeminiAI:ApiKeys"]
-                                ?? _configuration["GeminiAI:ApiKey"]; // Dự phòng tên biến cũ
+                                ?? _configuration["GeminiAI:ApiKey"];
 
             if (string.IsNullOrWhiteSpace(keysString))
             {
@@ -60,16 +60,17 @@ namespace AnFoodAPI.Services
 
             try
             {
+                // Lấy toàn bộ món ăn đang bán
                 var allActiveFoods = await _context.MonAns
                     .Where(m => m.TrangThai == "con_ban" && m.IsDeleted == false)
                     .ToListAsync();
 
                 var top5Foods = new List<object>();
 
+                // Gợi ý món ăn (Cá nhân hóa ML.NET hoặc Trending)
                 if (maNguoiDung.HasValue && maNguoiDung.Value > 0)
                 {
                     var scoredItems = new List<Tuple<MonAn, float>>();
-
                     foreach (var food in allActiveFoods)
                     {
                         float score = _aiService.PredictScore(maNguoiDung.Value, food.MaMon);
@@ -102,9 +103,15 @@ namespace AnFoodAPI.Services
                     }
                 }
 
+                // CHUẨN BỊ DỮ LIỆU BƠM VÀO AI
                 string duLieuMenu = JsonSerializer.Serialize(top5Foods);
-                string lichSuChat = "";
+                
+                // Lấy toàn bộ Menu tóm tắt (Mã, Tên, Giá) để AI có kiến thức tổng quát
+                var fullMenuContext = allActiveFoods.Select(m => new { m.MaMon, m.TenMon, m.Gia }).ToList();
+                string duLieuToanBoMenu = JsonSerializer.Serialize(fullMenuContext);
 
+                // Lấy lịch sử chat
+                string lichSuChat = "";
                 if (maNguoiDung.HasValue && maNguoiDung.Value > 0)
                 {
                     var history = await _context.LichSuChats
@@ -121,26 +128,30 @@ namespace AnFoodAPI.Services
                     }
                 }
 
-                string promptSystem = @"Bạn là trợ lý AI thông minh của nhà hàng FastBite.
+                // PROMPT SYSTEM ĐẠT CHUẨN KỸ NGHỆ NHẮC LỆNH (PROMPT ENGINEERING)
+                string promptSystem = $@"BẠN LÀ AI?
+Bạn là 'FastBite AI' - Trợ lý ẩm thực ảo độc quyền của hệ thống thức ăn nhanh FastBite. 
+Nhiệm vụ của bạn là tư vấn món ăn, báo giá, chốt sale và mang lại trải nghiệm 5 sao cho khách hàng.
 
-Đây là danh sách TOP 5 món ăn phù hợp nhất với khách hàng hiện tại do thuật toán AI gợi ý:
+📋 NGỮ CẢNH DỮ LIỆU (DATA CONTEXT):
+1. Toàn bộ thực đơn hiện có (ID, Tên, Giá): {duLieuToanBoMenu}
+2. Danh sách món đang được ưu tiên gợi ý cho khách này: {duLieuMenu}
 
-" + duLieuMenu + @"
+🧠 QUY TẮC ỨNG XỬ & BÁN HÀNG (BEHAVIOR RULES):
+- Tone giọng: Chuyên nghiệp, lịch sự, nhiệt tình. Xưng 'em', gọi khách là 'bạn' hoặc 'anh/chị'. Trả lời ngắn gọn 1-3 câu vì khách đang đói.
+- Tư vấn chính xác: CHỈ dùng thông tin trong [Toàn bộ thực đơn] để báo giá. Nếu khách hỏi món không có bán (VD: bún đậu, phở), hãy xin lỗi khéo và lập tức gợi ý món nổi bật của FastBite.
+- Nghệ thuật Up-sell: Luôn cố gắng lồng ghép 1-2 món trong [Danh sách ưu tiên] để mời khách mua kèm một cách tinh tế (VD: Mua burger thì mời thêm nước ngọt).
+- Bảo vệ hệ thống (Anti-Jailbreak): TUYỆT ĐỐI KHÔNG trả lời các câu hỏi ngoài lề (toán học, code, chính trị, lịch sử, thời tiết...). Nếu gặp câu hỏi này, chỉ đáp: 'Dạ em là trợ lý ẩm thực của FastBite, em chỉ hỗ trợ anh/chị chọn đồ ăn thôi ạ! Anh/chị đang thèm món gì thế?'
 
-🚨 YÊU CẦU BẮT BUỘC:
-
-Chỉ trả về JSON.
-
-{
-  ""message"": ""..."",
-  ""suggestedProductIds"": [1,2]
-}
-
-Không được trả thêm markdown.
-Không được dùng ```json.
-Không được thêm giải thích.
-
-Ưu tiên tư vấn các món trong TOP 5.";
+⚙️ QUY TẮC ĐẦU RA (STRICT OUTPUT FORMAT):
+BẠN LÀ MỘT API. Bắt buộc trả về DUY NHẤT một đối tượng JSON nguyên bản.
+- KHÔNG bọc trong markdown (không dùng ```json).
+- KHÔNG giải thích gì thêm ngoài JSON.
+- Phải tuân thủ đúng cấu trúc sau:
+{{
+  ""message"": ""Câu trả lời giao tiếp với khách..."",
+  ""suggestedProductIds"": [ID1, ID2] // Chọn 1-3 ID từ [Danh sách ưu tiên] để hiển thị lên thẻ gợi ý.
+}}";
 
                 string fullPrompt = $"{promptSystem}\n\nLỊCH SỬ:\n{lichSuChat}\n\nKhách hỏi:\n{cauHoi}";
 
@@ -151,17 +162,17 @@ Không được thêm giải thích.
                 // THUẬT TOÁN ROUND-ROBIN
                 Random rnd = new Random();
                 
-                // 1. Bốc 1 key và lột sạch mọi dấu ngoặc kép, khoảng trắng rác từ Railway
+                // Bốc 1 key và lột sạch mọi dấu ngoặc kép, khoảng trắng rác từ Railway
                 string selectedApiKey = _apiKeys[rnd.Next(_apiKeys.Count)]
                     .Replace("\"", "")
                     .Replace("'", "")
                     .Replace(" ", "")
                     .Trim();
 
-                // 2. Nối chuỗi URL (Sếp nhớ xóa trắng dòng url cũ đi nhé)
-                string url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + selectedApiKey;
+                // Nối chuỗi URL (Mô hình 2.5-flash)
+                string url = "[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=)" + selectedApiKey;
                 
-                // 3. Tiêu diệt "ký tự tàng hình" (Zero-width space) do copy/paste
+                // Tiêu diệt "ký tự tàng hình" (Zero-width space) do copy/paste
                 url = url.Replace("\u200B", "").Replace("\uFEFF", "");
 
                 var requestBody = new
@@ -174,11 +185,12 @@ Không được thêm giải thích.
                 var response = await client.PostAsync(url, content);
                 string responseString = await response.Content.ReadAsStringAsync();
 
+                // Bắt gọn lỗi 429 Quá tải
                 if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                 {
                     return new AiResponseDto
                     {
-                        message = "Dạ hệ thống AI đang bận xử lý do quá tải (Lỗi 429), bạn vui lòng chờ 1 phút rồi nhắn lại nhé! ⏳",
+                        message = "Dạ hệ thống AI đang bận xử lý do lượng truy cập cao, bạn vui lòng chờ 1 chút rồi nhắn lại nhé! ⏳",
                         suggestedProductIds = fallbackSuggestedIds
                     };
                 }
@@ -192,6 +204,7 @@ Không được thêm giải thích.
                     };
                 }
 
+                // Xử lý dữ liệu JSON trả về
                 using (JsonDocument doc = JsonDocument.Parse(responseString))
                 {
                     if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
@@ -207,7 +220,7 @@ Không được thêm giải thích.
             }
             catch (Exception ex)
             {
-                // DEBUG LỖI ĐỂ TÌM NGUYÊN NHÂN CHÍNH XÁC
+                // DEBUG LỖI TRONG QUÁ TRÌNH CHẠY
                 return new AiResponseDto
                 {
                     message = $"[GÓC DEBUG LỖI]\nMessage: {ex.Message}\nChi tiết: {ex.InnerException?.Message}",
