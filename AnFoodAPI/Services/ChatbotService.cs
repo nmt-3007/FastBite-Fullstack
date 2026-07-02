@@ -159,7 +159,7 @@ Không được thêm giải thích.
                     .Trim();
 
                 // 2. Nối chuỗi URL (Sếp nhớ xóa trắng dòng url cũ đi nhé)
-                string url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + selectedApiKey;
+                string url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + selectedApiKey;
                 
                 // 3. Tiêu diệt "ký tự tàng hình" (Zero-width space) do copy/paste
                 url = url.Replace("\u200B", "").Replace("\uFEFF", "");
