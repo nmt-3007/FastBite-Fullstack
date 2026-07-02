@@ -63,7 +63,7 @@ sequenceDiagram
         
         CBS->>CBS: Tạo request body:<br/>{contents, responseMimeType}
         CBS->>GEMINI: POST /v1beta/models/gemini-2.5-flash
-        Note over CBS,GEMINI: ?key=AIzaSyAnwAcD_...
+        Note over CBS,GEMINI: ?key=
         
         Note over GEMINI: 🤖 Gemini xử lý:<br/>1. Đọc prompt + lịch sử<br/>2. Hiểu ý khách<br/>3. Tư vấn Top 5 món<br/>4. Trả JSON định dạng
         

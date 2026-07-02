@@ -120,7 +120,7 @@ end note
 
 CBS -> CBS: Tạo request body:\n{\n  contents: [{ parts: [{ text: fullPrompt }] }],\n  generationConfig: { responseMimeType: "application/json" }\n}
 
-CBS -> GEMINI: POST /v1beta/models/gemini-2.5-flash:generateContent\n?key=AIzaSyAnwAcD_BpR9WtyJN7XRmKQnjRq0ugUjww\n\nBody: requestBody (JSON)
+CBS -> GEMINI: POST /v1beta/models/gemini-2.5-flash:generateContent\n?key=\n\nBody: requestBody (JSON)
 
 note over GEMINI
     🤖 Gemini xử lý:

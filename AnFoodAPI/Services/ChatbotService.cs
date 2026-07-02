@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using AnFoodAPI.Models;
 using AnFoodAPI.DTOs;
 
@@ -20,15 +21,26 @@ namespace AnFoodAPI.Services
     {
         private readonly AnshopDbContext _context;
         private readonly IRecommendationService _aiService;
-
-        private readonly string _apiKey = "AIzaSyAnwAcD_BpR9WtyJN7XRmKQnjRq0ugUjww";
+        private readonly IConfiguration _configuration;
+        private readonly string _apiKey;
 
         public ChatbotService(
             AnshopDbContext context,
-            IRecommendationService aiService)
+            IRecommendationService aiService,
+            IConfiguration configuration)
         {
             _context = context;
             _aiService = aiService;
+            _configuration = configuration;
+
+            _apiKey =
+    Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+    ?? _configuration["GeminiAI:ApiKey"];
+
+if (string.IsNullOrWhiteSpace(_apiKey))
+{
+    throw new Exception("Không tìm thấy Gemini API Key.");
+}
         }
 
         public async Task<AiResponseDto> LayPhanHoiTuAiAsync(int? maNguoiDung, string cauHoi)
@@ -133,10 +145,14 @@ Không được thêm giải thích.
 
                 using var client = new HttpClient();
 
-                client.Timeout = TimeSpan.FromSeconds(60);
+                    client.Timeout = TimeSpan.FromSeconds(120);
+
+                    client.DefaultRequestHeaders.Add(
+                        "User-Agent",
+                        "FastBite-AI");
 
                 string url =
-                    $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
+                    $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={_apiKey}";
 
                 var requestBody = new
                 {
@@ -169,9 +185,6 @@ Không được thêm giải thích.
                 string responseString =
                     await response.Content.ReadAsStringAsync();
 
-                // ==========================
-                // BẮT LỖI THẬT TỪ GEMINI
-                // ==========================
                 if (!response.IsSuccessStatusCode)
                 {
                     return new AiResponseDto
@@ -187,12 +200,27 @@ HTTP: {(int)response.StatusCode}
 
                 using (JsonDocument doc = JsonDocument.Parse(responseString))
                 {
-                    string aiJson = doc.RootElement
-                        .GetProperty("candidates")[0]
-                        .GetProperty("content")
-                        .GetProperty("parts")[0]
-                        .GetProperty("text")
-                        .GetString();
+                    if (!doc.RootElement.TryGetProperty("candidates", out var candidates))
+{
+    return new AiResponseDto
+    {
+        message = "Gemini không trả về dữ liệu."
+    };
+}
+
+if (candidates.GetArrayLength() == 0)
+{
+    return new AiResponseDto
+    {
+        message = "Gemini không có phản hồi."
+    };
+}
+
+string aiJson = candidates[0]
+    .GetProperty("content")
+    .GetProperty("parts")[0]
+    .GetProperty("text")
+    .GetString();
 
                     var options = new JsonSerializerOptions
                     {
