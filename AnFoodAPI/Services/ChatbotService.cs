@@ -42,7 +42,6 @@ namespace AnFoodAPI.Services
                 throw new Exception("Không tìm thấy cấu hình Gemini API Keys.");
             }
 
-            // BỘ LỌC THÉP: Cắt sạch mọi khoảng trắng, dấu phẩy, dấu chấm phẩy, xuống dòng
             _apiKeys = keysString.Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
                                  .Select(k => k.Trim())
                                  .Where(k => !string.IsNullOrEmpty(k))
@@ -60,14 +59,12 @@ namespace AnFoodAPI.Services
 
             try
             {
-                // Lấy toàn bộ món ăn đang bán
                 var allActiveFoods = await _context.MonAns
                     .Where(m => m.TrangThai == "con_ban" && m.IsDeleted == false)
                     .ToListAsync();
 
                 var top5Foods = new List<object>();
 
-                // Gợi ý món ăn (Cá nhân hóa ML.NET hoặc Trending)
                 if (maNguoiDung.HasValue && maNguoiDung.Value > 0)
                 {
                     var scoredItems = new List<Tuple<MonAn, float>>();
@@ -103,14 +100,11 @@ namespace AnFoodAPI.Services
                     }
                 }
 
-                // CHUẨN BỊ DỮ LIỆU BƠM VÀO AI
                 string duLieuMenu = JsonSerializer.Serialize(top5Foods);
                 
-                // Lấy toàn bộ Menu tóm tắt (Mã, Tên, Giá) để AI có kiến thức tổng quát
                 var fullMenuContext = allActiveFoods.Select(m => new { m.MaMon, m.TenMon, m.Gia }).ToList();
                 string duLieuToanBoMenu = JsonSerializer.Serialize(fullMenuContext);
 
-                // Lấy lịch sử chat
                 string lichSuChat = "";
                 if (maNguoiDung.HasValue && maNguoiDung.Value > 0)
                 {
@@ -128,7 +122,7 @@ namespace AnFoodAPI.Services
                     }
                 }
 
-                // PROMPT SYSTEM ĐẠT CHUẨN KỸ NGHỆ NHẮC LỆNH (PROMPT ENGINEERING)
+                // 🌟 PROMPT ĐÃ ĐƯỢC LÀM SẠCH HOÀN TOÀN TRÁNH AI CHÈN DẤU CHÚ THÍCH LỖI JSON
                 string promptSystem = $@"BẠN LÀ AI?
 Bạn là 'FastBite AI' - Trợ lý ẩm thực ảo độc quyền của hệ thống thức ăn nhanh FastBite. 
 Nhiệm vụ của bạn là tư vấn món ăn, báo giá, chốt sale và mang lại trải nghiệm 5 sao cho khách hàng.
@@ -144,14 +138,12 @@ Nhiệm vụ của bạn là tư vấn món ăn, báo giá, chốt sale và mang
 - Bảo vệ hệ thống (Anti-Jailbreak): TUYỆT ĐỐI KHÔNG trả lời các câu hỏi ngoài lề (toán học, code, chính trị, lịch sử, thời tiết...). Nếu gặp câu hỏi này, chỉ đáp: 'Dạ em là trợ lý ẩm thực của FastBite, em chỉ hỗ trợ anh/chị chọn đồ ăn thôi ạ! Anh/chị đang thèm món gì thế?'
 
 ⚙️ QUY TẮC ĐẦU RA (STRICT OUTPUT FORMAT):
-BẠN LÀ MỘT API. Bắt buộc trả về DUY NHẤT một đối tượng JSON nguyên bản.
-- KHÔNG bọc trong markdown (không dùng ```json).
-- KHÔNG giải thích gì thêm ngoài JSON.
-- Phải tuân thủ đúng cấu trúc sau:
+BẠN LÀ MỘT API. Bắt buộc trả về DUY NHẤT một đối tượng JSON nguyên bản, tuân thủ cấu trúc sau:
 {{
   ""message"": ""Câu trả lời giao tiếp với khách..."",
-  ""suggestedProductIds"": [ID1, ID2] // Chọn 1-3 ID từ [Danh sách ưu tiên] để hiển thị lên thẻ gợi ý.
-}}";
+  ""suggestedProductIds"": [1, 2]
+}}
+Lưu ý: Mảng 'suggestedProductIds' chứa danh sách các ID số nguyên lấy từ danh sách món ăn ưu tiên ở trên để hiển thị lên thẻ gợi ý sản phẩm.";
 
                 string fullPrompt = $"{promptSystem}\n\nLỊCH SỬ:\n{lichSuChat}\n\nKhách hỏi:\n{cauHoi}";
 
@@ -159,20 +151,11 @@ BẠN LÀ MỘT API. Bắt buộc trả về DUY NHẤT một đối tượng JS
                 client.Timeout = TimeSpan.FromSeconds(120);
                 client.DefaultRequestHeaders.Add("User-Agent", "FastBite-AI");
 
-                // THUẬT TOÁN ROUND-ROBIN
                 Random rnd = new Random();
-                
-                // Bốc 1 key và lột sạch mọi dấu ngoặc kép, khoảng trắng rác từ Railway
                 string selectedApiKey = _apiKeys[rnd.Next(_apiKeys.Count)]
-                    .Replace("\"", "")
-                    .Replace("'", "")
-                    .Replace(" ", "")
-                    .Trim();
+                    .Replace("\"", "").Replace("'", "").Replace(" ", "").Trim();
 
-                // Nối chuỗi URL (Mô hình 2.5-flash)
-                string url = "[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=)" + selectedApiKey;
-                
-                // Tiêu diệt "ký tự tàng hình" (Zero-width space) do copy/paste
+                string url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + selectedApiKey;
                 url = url.Replace("\u200B", "").Replace("\uFEFF", "");
 
                 var requestBody = new
@@ -185,47 +168,68 @@ BẠN LÀ MỘT API. Bắt buộc trả về DUY NHẤT một đối tượng JS
                 var response = await client.PostAsync(url, content);
                 string responseString = await response.Content.ReadAsStringAsync();
 
-                // Bắt gọn lỗi 429 Quá tải
                 if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                 {
-                    return new AiResponseDto
-                    {
-                        message = "Dạ hệ thống AI đang bận xử lý do lượng truy cập cao, bạn vui lòng chờ 1 chút rồi nhắn lại nhé! ⏳",
-                        suggestedProductIds = fallbackSuggestedIds
-                    };
+                    var errorDto = new AiResponseDto();
+                    GánThuộcTínhChữ(errorDto, "Dạ hệ thống AI đang bận xử lý do quá tải (Lỗi 429), bạn vui lòng chờ 1 phút rồi nhắn lại nhé! ⏳");
+                    GánThuộcTínhMảng(errorDto, fallbackSuggestedIds);
+                    return errorDto;
                 }
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    return new AiResponseDto
-                    {
-                        message = $"[API LỖI {(int)response.StatusCode}] {responseString}",
-                        suggestedProductIds = fallbackSuggestedIds
-                    };
+                    var errorDto = new AiResponseDto();
+                    GánThuộcTínhChữ(errorDto, $"[API LỖI {(int)response.StatusCode}] {responseString}");
+                    GánThuộcTínhMảng(errorDto, fallbackSuggestedIds);
+                    return errorDto;
                 }
 
-                // Xử lý dữ liệu JSON trả về
                 using (JsonDocument doc = JsonDocument.Parse(responseString))
                 {
                     if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
                     {
-                        return new AiResponseDto { message = "Gemini không có phản hồi." };
+                        var errorDto = new AiResponseDto();
+                        GánThuộcTínhChữ(errorDto, "Gemini không có phản hồi.");
+                        return errorDto;
                     }
 
                     string aiJson = candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString();
 
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    // 🌟 GIA CỐ BỘ GIẢI MÃ: Cho phép dấu phẩy thừa và tự động bỏ qua chú thích rác của AI nếu có
+                    var options = new JsonSerializerOptions 
+                    { 
+                        PropertyNameCaseInsensitive = true,
+                        AllowTrailingCommas = true,
+                        ReadCommentHandling = JsonCommentHandling.Skip
+                    };
                     return JsonSerializer.Deserialize<AiResponseDto>(aiJson, options);
                 }
             }
             catch (Exception ex)
             {
-                // DEBUG LỖI TRONG QUÁ TRÌNH CHẠY
-                return new AiResponseDto
-                {
-                    message = $"[GÓC DEBUG LỖI]\nMessage: {ex.Message}\nChi tiết: {ex.InnerException?.Message}",
-                    suggestedProductIds = fallbackSuggestedIds
-                };
+                var errorDto = new AiResponseDto();
+                GánThuộcTínhChữ(errorDto, $"[GÓC DEBUG LỖI]\nMessage: {ex.Message}\nChi tiết: {ex.InnerException?.Message}");
+                GánThuộcTínhMảng(errorDto, fallbackSuggestedIds);
+                return errorDto;
+            }
+        }
+
+        // 🌟 BIỆN PHÁP REFLECTION GIA CỐ: Gán dữ liệu động, chấp nhận mọi kiểu viết hoa/viết thường hoặc kiểu mảng/list trong DTO của sếp
+        private void GánThuộcTínhChữ(AiResponseDto dto, string giaTri)
+        {
+            var prop = typeof(AiResponseDto).GetProperties()
+                .FirstOrDefault(p => p.Name.Equals("message", StringComparison.OrdinalIgnoreCase));
+            prop?.SetValue(dto, giaTri);
+        }
+
+        private void GánThuộcTínhMảng(AiResponseDto dto, List<int> giaTri)
+        {
+            var prop = typeof(AiResponseDto).GetProperties()
+                .FirstOrDefault(p => p.Name.Equals("suggestedProductIds", StringComparison.OrdinalIgnoreCase));
+            if (prop != null)
+            {
+                if (prop.PropertyType == typeof(List<int>)) prop.SetValue(dto, giaTri);
+                else if (prop.PropertyType == typeof(int[])) prop.SetValue(dto, giaTri.ToArray());
             }
         }
     }
