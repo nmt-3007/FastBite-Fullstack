@@ -22,8 +22,6 @@ namespace AnFoodAPI.Services
         private readonly AnshopDbContext _context;
         private readonly IRecommendationService _aiService;
         private readonly IConfiguration _configuration;
-        
-        // Thay vì 1 string, mình dùng 1 List để chứa nhiều Key
         private readonly List<string> _apiKeys;
 
         public ChatbotService(
@@ -35,18 +33,19 @@ namespace AnFoodAPI.Services
             _aiService = aiService;
             _configuration = configuration;
 
-            // Lấy chuỗi chứa nhiều Key (phân cách bằng dấu phẩy)
-            string keysString = Environment.GetEnvironmentVariable("GEMINI_API_KEYS")
-                                ?? _configuration["GeminiAI:ApiKeys"];
+            string keysString = Environment.GetEnvironmentVariable("GEMINI_API_KEYS") 
+                                ?? _configuration["GeminiAI:ApiKeys"]
+                                ?? _configuration["GeminiAI:ApiKey"]; // Dự phòng tên biến cũ
 
             if (string.IsNullOrWhiteSpace(keysString))
             {
                 throw new Exception("Không tìm thấy cấu hình Gemini API Keys.");
             }
 
-            // Cắt chuỗi thành mảng các Key sạch sẽ
-            _apiKeys = keysString.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            // BỘ LỌC THÉP: Cắt sạch mọi khoảng trắng, dấu phẩy, dấu chấm phẩy, xuống dòng
+            _apiKeys = keysString.Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
                                  .Select(k => k.Trim())
+                                 .Where(k => !string.IsNullOrEmpty(k))
                                  .ToList();
 
             if (!_apiKeys.Any())
@@ -57,7 +56,6 @@ namespace AnFoodAPI.Services
 
         public async Task<AiResponseDto> LayPhanHoiTuAiAsync(int? maNguoiDung, string cauHoi)
         {
-            // Khai báo sẵn list ID fallback để lỡ AI sập, giao diện vẫn có món ăn để hiển thị
             List<int> fallbackSuggestedIds = new List<int>();
 
             try
@@ -86,14 +84,8 @@ namespace AnFoodAPI.Services
 
                     foreach (var m in topPersonalized)
                     {
-                        top5Foods.Add(new
-                        {
-                            id = m.MaMon,
-                            name = m.TenMon,
-                            price = m.Gia,
-                            tag = "Cá nhân hóa theo ML.NET"
-                        });
-                        fallbackSuggestedIds.Add(m.MaMon); // Lưu lại ID
+                        top5Foods.Add(new { id = m.MaMon, name = m.TenMon, price = m.Gia, tag = "Cá nhân hóa theo ML.NET" });
+                        fallbackSuggestedIds.Add(m.MaMon);
                     }
                 }
                 else
@@ -105,14 +97,8 @@ namespace AnFoodAPI.Services
 
                     foreach (var m in topTrending)
                     {
-                        top5Foods.Add(new
-                        {
-                            id = m.MaMon,
-                            name = m.TenMon,
-                            price = m.Gia,
-                            tag = "Bán chạy nhất"
-                        });
-                        fallbackSuggestedIds.Add(m.MaMon); // Lưu lại ID
+                        top5Foods.Add(new { id = m.MaMon, name = m.TenMon, price = m.Gia, tag = "Bán chạy nhất" });
+                        fallbackSuggestedIds.Add(m.MaMon);
                     }
                 }
 
@@ -162,7 +148,7 @@ Không được thêm giải thích.
                 client.Timeout = TimeSpan.FromSeconds(120);
                 client.DefaultRequestHeaders.Add("User-Agent", "FastBite-AI");
 
-                // THUẬT TOÁN ROUND-ROBIN: Random bốc 1 Key từ danh sách
+                // THUẬT TOÁN ROUND-ROBIN
                 Random rnd = new Random();
                 string selectedApiKey = _apiKeys[rnd.Next(_apiKeys.Count)];
 
@@ -170,31 +156,21 @@ Không được thêm giải thích.
 
                 var requestBody = new
                 {
-                    contents = new[]
-                    {
-                        new
-                        {
-                            parts = new[] { new { text = fullPrompt } }
-                        }
-                    },
+                    contents = new[] { new { parts = new[] { new { text = fullPrompt } } } },
                     generationConfig = new { responseMimeType = "application/json" }
                 };
 
-                var content = new StringContent(
-                    JsonSerializer.Serialize(requestBody),
-                    Encoding.UTF8,
-                    "application/json");
+                var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
 
                 var response = await client.PostAsync(url, content);
                 string responseString = await response.Content.ReadAsStringAsync();
 
-                // Bắt lỗi 429 ngay tại đây nếu xui xẻo Key được bốc trúng đang bị giới hạn
                 if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                 {
                     return new AiResponseDto
                     {
-                        message = "Dạ hệ thống AI đang bận xử lý do quá tải, bạn vui lòng chờ 1 phút rồi nhắn lại nhé! ⏳",
-                        suggestedProductIds = fallbackSuggestedIds // Vẫn trả về món ăn để giao diện không bị trống!
+                        message = "Dạ hệ thống AI đang bận xử lý do quá tải (Lỗi 429), bạn vui lòng chờ 1 phút rồi nhắn lại nhé! ⏳",
+                        suggestedProductIds = fallbackSuggestedIds
                     };
                 }
 
@@ -202,29 +178,19 @@ Không được thêm giải thích.
                 {
                     return new AiResponseDto
                     {
-                        message = $@"Gemini API Error
-HTTP: {(int)response.StatusCode}
-{responseString}"
+                        message = $"[API LỖI {(int)response.StatusCode}] {responseString}",
+                        suggestedProductIds = fallbackSuggestedIds
                     };
                 }
 
                 using (JsonDocument doc = JsonDocument.Parse(responseString))
                 {
-                    if (!doc.RootElement.TryGetProperty("candidates", out var candidates))
-                    {
-                        return new AiResponseDto { message = "Gemini không trả về dữ liệu." };
-                    }
-
-                    if (candidates.GetArrayLength() == 0)
+                    if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
                     {
                         return new AiResponseDto { message = "Gemini không có phản hồi." };
                     }
 
-                    string aiJson = candidates[0]
-                        .GetProperty("content")
-                        .GetProperty("parts")[0]
-                        .GetProperty("text")
-                        .GetString();
+                    string aiJson = candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString();
 
                     var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                     return JsonSerializer.Deserialize<AiResponseDto>(aiJson, options);
@@ -232,10 +198,11 @@ HTTP: {(int)response.StatusCode}
             }
             catch (Exception ex)
             {
+                // DEBUG LỖI ĐỂ TÌM NGUYÊN NHÂN CHÍNH XÁC
                 return new AiResponseDto
                 {
-                    message = "Dạ hệ thống trợ lý ảo đang được bảo trì đột xuất, anh/chị thông cảm giúp em nhé!",
-                    suggestedProductIds = fallbackSuggestedIds // Vẫn nhét list món ăn vào đây luôn cho an toàn
+                    message = $"[GÓC DEBUG LỖI]\nMessage: {ex.Message}\nChi tiết: {ex.InnerException?.Message}",
+                    suggestedProductIds = fallbackSuggestedIds
                 };
             }
         }
