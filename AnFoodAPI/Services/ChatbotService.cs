@@ -150,16 +150,25 @@ Không được thêm giải thích.
 
                 // THUẬT TOÁN ROUND-ROBIN
                 Random rnd = new Random();
-                string selectedApiKey = _apiKeys[rnd.Next(_apiKeys.Count)];
+                
+                // 1. Bốc 1 key và lột sạch mọi dấu ngoặc kép, khoảng trắng rác từ Railway
+                string selectedApiKey = _apiKeys[rnd.Next(_apiKeys.Count)]
+                    .Replace("\"", "")
+                    .Replace("'", "")
+                    .Replace(" ", "")
+                    .Trim();
 
-                string url = $"[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=){selectedApiKey}";
+                // 2. Nối chuỗi URL (Sếp nhớ xóa trắng dòng url cũ đi nhé)
+                string url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + selectedApiKey;
+                
+                // 3. Tiêu diệt "ký tự tàng hình" (Zero-width space) do copy/paste
+                url = url.Replace("\u200B", "").Replace("\uFEFF", "");
 
                 var requestBody = new
                 {
                     contents = new[] { new { parts = new[] { new { text = fullPrompt } } } },
                     generationConfig = new { responseMimeType = "application/json" }
                 };
-
                 var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
 
                 var response = await client.PostAsync(url, content);
