@@ -1,14 +1,18 @@
 ﻿﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AnFoodAPI.Models;
-using AnFoodAPI.DTOs; // Đảm bảo bạn đã có folder DTOs hoặc namespace này
+using AnFoodAPI.DTOs; 
 using System.Net;
 using System.Net.Mail;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.AspNetCore.Authorization; // Cần thêm cái này để phân quyền
+using Microsoft.AspNetCore.Authorization; 
+using System.Linq;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System;
 
 namespace AnFoodAPI.Controllers
 {
@@ -26,16 +30,16 @@ namespace AnFoodAPI.Controllers
         }
 
         // ============================================================
-        // 1. GET ALL USERS (Chỉ Admin mới được xem)
+        // 1. GET ALL USERS (ĐÃ FIX LỖI 500: TÁCH LOGIC XỬ LÝ SANG RAM)
         // ============================================================
         [HttpGet]
-        [Authorize(Roles = "admin")] // 🔒 Bảo mật: Chỉ Admin có Token mới xem được
+        [Authorize(Roles = "admin")] 
         public async Task<ActionResult<IEnumerable<object>>> GetAllNguoiDung()
         {
             try 
             {
-                var users = await _context.NguoiDungs
-                    .OrderByDescending(u => u.MaNguoiDung)
+                // BƯỚC 1: Ép MySQL chỉ lấy dữ liệu thô, không cho nó dịch logic phức tạp
+                var rawData = await _context.NguoiDungs
                     .Select(u => new 
                     {
                         u.MaNguoiDung,
@@ -45,36 +49,51 @@ namespace AnFoodAPI.Controllers
                         u.DiaChi,
                         u.TrangThai,
                         u.NgayTao,
-                        IsDeleted = u.IsDeleted.HasValue ? u.IsDeleted.Value : false, 
-                        VaiTro = u.MaVaiTro == 1 ? "admin" : "user"
+                        u.IsDeleted, 
+                        u.MaVaiTro
                     })
+                    .OrderByDescending(u => u.MaNguoiDung)
                     .ToListAsync();
+
+                // BƯỚC 2: Ánh xạ và chuyển đổi dữ liệu cực nhanh trên RAM của C#
+                var users = rawData.Select(u => new 
+                {
+                    u.MaNguoiDung,
+                    u.HoTen,
+                    u.Email,
+                    u.SoDienThoai,
+                    u.DiaChi,
+                    u.TrangThai,
+                    u.NgayTao,
+                    IsDeleted = u.IsDeleted ?? false, // Dùng ?? an toàn hơn HasValue
+                    VaiTro = u.MaVaiTro == 1 ? "admin" : "user"
+                }).ToList();
 
                 return Ok(users);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Server Error: " + ex.Message });
+                // Trả về chi tiết lỗi sâu nhất nếu vẫn dính
+                return StatusCode(500, new { message = "Server Error: " + ex.Message, detail = ex.InnerException?.Message });
             }
         }
 
         // ============================================================
-        // 2. GET USER BY ID (Ai cũng xem được profile của chính mình)
+        // 2. GET USER BY ID (ĐÃ FIX ĐỒNG BỘ CÁCH LÀM)
         // ============================================================
         [HttpGet("{id}")]
         [Authorize] 
         public async Task<ActionResult<object>> GetNguoiDung(int id)
         {
-            // Kiểm tra: Người dùng chỉ được xem thông tin của chính mình (Trừ khi là Admin)
             var userIdClaim = User.FindFirst("MaNguoiDung")?.Value;
             var roleClaim = User.FindFirst(ClaimTypes.Role)?.Value;
 
             if (userIdClaim != null && roleClaim != "admin" && int.Parse(userIdClaim) != id)
             {
-                return Forbid(); // Cấm xem trộm thông tin người khác
+                return Forbid(); 
             }
 
-            var user = await _context.NguoiDungs
+            var rawUser = await _context.NguoiDungs
                 .Where(u => u.MaNguoiDung == id)
                 .Select(u => new 
                 {
@@ -85,41 +104,52 @@ namespace AnFoodAPI.Controllers
                     u.DiaChi,
                     u.TrangThai,
                     u.NgayTao,
-                    IsDeleted = u.IsDeleted.HasValue ? u.IsDeleted.Value : false,
-                    VaiTro = u.MaVaiTro == 1 ? "admin" : "user"
+                    u.IsDeleted,
+                    u.MaVaiTro
                 })
                 .FirstOrDefaultAsync();
 
-            if (user == null) return NotFound(new { message = "User not found" });
-            return user;
+            if (rawUser == null) return NotFound(new { message = "User not found" });
+
+            var user = new 
+            {
+                rawUser.MaNguoiDung,
+                rawUser.HoTen,
+                rawUser.Email,
+                rawUser.SoDienThoai,
+                rawUser.DiaChi,
+                rawUser.TrangThai,
+                rawUser.NgayTao,
+                IsDeleted = rawUser.IsDeleted ?? false,
+                VaiTro = rawUser.MaVaiTro == 1 ? "admin" : "user"
+            };
+
+            return Ok(user);
         }
 
         // ============================================================
-        // 3. LOGIN (QUAN TRỌNG: Tạo Token chuẩn cho việc Đánh Giá)
+        // 3. LOGIN 
         // ============================================================
         [HttpPost("DangNhap")]
         public IActionResult DangNhap([FromBody] UserLoginModel model)
         {
-            // ⚠️ Lưu ý: Thực tế nên mã hóa mật khẩu (Hash) thay vì so sánh trực tiếp thế này
             var user = _context.NguoiDungs.FirstOrDefault(u => u.Email == model.Email && u.MatKhau == model.MatKhau);
 
             if (user == null) return Unauthorized(new { message = "Sai email hoặc mật khẩu!" });
 
-            bool isLocked = user.IsDeleted.HasValue ? user.IsDeleted.Value : false;
+            bool isLocked = user.IsDeleted ?? false;
             if (isLocked || user.TrangThai == "bi_khoa")
             {
                 return Unauthorized(new { message = "Tài khoản đã bị khóa. Vui lòng liên hệ Admin." });
             }
 
             var tokenHandler = new JwtSecurityTokenHandler();
-            // Lấy Key từ appsettings.json hoặc dùng key cứng (tạm thời)
             var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"] ?? "DAY_LA_KEY_BI_MAT_CUA_FASTBITE_123456789"); 
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(new Claim[]
                 {
-                    // 👇 QUAN TRỌNG: Phải đặt tên là "MaNguoiDung" để khớp với Controller Đánh Giá
                     new Claim("MaNguoiDung", user.MaNguoiDung.ToString()), 
                     new Claim(ClaimTypes.Name, user.HoTen ?? ""),
                     new Claim(ClaimTypes.Email, user.Email),
@@ -163,9 +193,9 @@ namespace AnFoodAPI.Controllers
             {
                 HoTen = req.TenNguoiDung,
                 Email = req.Email,
-                MatKhau = req.MatKhau, // Nên Hash mật khẩu ở đây
+                MatKhau = req.MatKhau, 
                 SoDienThoai = req.SoDienThoai,
-                MaVaiTro = 2, // Mặc định là khách hàng
+                MaVaiTro = 2, 
                 TrangThai = "hoat_dong",
                 NgayTao = DateTime.Now,
                 DiaChi = req.DiaChi,
@@ -207,7 +237,6 @@ namespace AnFoodAPI.Controllers
         [Authorize]
         public async Task<IActionResult> PutNguoiDung(int id, NguoiDung nguoiDung)
         {
-            // Check quyền: Chỉ admin hoặc chính chủ mới được sửa
             var userIdClaim = User.FindFirst("MaNguoiDung")?.Value;
             var roleClaim = User.FindFirst(ClaimTypes.Role)?.Value;
 
@@ -224,7 +253,6 @@ namespace AnFoodAPI.Controllers
             existingUser.HoTen = nguoiDung.HoTen;
             existingUser.SoDienThoai = nguoiDung.SoDienThoai;
             existingUser.DiaChi = nguoiDung.DiaChi;
-            // Không cho phép sửa Email, Mật khẩu, Vai trò ở API này
 
             try
             {
@@ -232,7 +260,7 @@ namespace AnFoodAPI.Controllers
             }
             catch (DbUpdateConcurrencyException)
             {
-               throw;
+                throw;
             }
 
             return Ok(new { message = "Cập nhật thành công!" });
@@ -278,7 +306,7 @@ namespace AnFoodAPI.Controllers
         }
 
         // ============================================================
-        // 9. OTP & QUÊN MẬT KHẨU (CÓ GỬI EMAIL THẬT)
+        // 9. OTP & QUÊN MẬT KHẨU
         // ============================================================
         [HttpPost("GuiOTP")]
         public async Task<IActionResult> GuiOTP([FromBody] UserLoginModel model)
@@ -286,19 +314,16 @@ namespace AnFoodAPI.Controllers
             var user = await _context.NguoiDungs.FirstOrDefaultAsync(u => u.Email == model.Email);
             if (user == null) return NotFound(new { message = "Email không tồn tại trong hệ thống" });
             
-            bool isLocked = user.IsDeleted.HasValue ? user.IsDeleted.Value : false;
+            bool isLocked = user.IsDeleted ?? false;
             if (isLocked) return BadRequest(new { message = "Tài khoản đang bị khóa." });
 
-            // Tạo mã OTP 6 số
             Random generator = new Random();
             string otp = generator.Next(0, 1000000).ToString("D6");
 
             user.OtpCode = otp;
-            user.OtpExpiry = DateTime.Now.AddMinutes(5); // OTP hết hạn sau 5 phút
+            user.OtpExpiry = DateTime.Now.AddMinutes(5); 
             await _context.SaveChangesAsync();
 
-            // 🔥 GỬI EMAIL THẬT (Thay vì trả về OTP)
-            // Bạn cần vào Google Account -> App Passwords để lấy mật khẩu ứng dụng
             bool emailSent = GuiEmailThat(user.Email, "Mã xác thực quên mật khẩu", $"Mã OTP của bạn là: <b>{otp}</b>. Mã có hiệu lực trong 5 phút.");
 
             if (emailSent)
@@ -318,7 +343,7 @@ namespace AnFoodAPI.Controllers
                 return BadRequest(new { message = "Mã OTP không đúng hoặc đã hết hạn!" });
             }
 
-            user.MatKhau = model.MatKhauMoi; // Nhớ hash nếu cần
+            user.MatKhau = model.MatKhauMoi; 
             user.OtpCode = null;
             user.OtpExpiry = null;
 
@@ -327,16 +352,13 @@ namespace AnFoodAPI.Controllers
             return Ok(new { message = "Đổi mật khẩu thành công! Vui lòng đăng nhập lại." });
         }
 
-        // --- HÀM PHỤ TRỢ: GỬI EMAIL SMTP ---
         private bool GuiEmailThat(string toEmail, string subject, string body)
         {
             try
             {
-                // Cấu hình SMTP (Ví dụ dùng Gmail)
                 var smtpClient = new SmtpClient("smtp.gmail.com")
                 {
                     Port = 587,
-                    // 👇 ĐIỀN EMAIL VÀ APP PASSWORD CỦA BẠN VÀO ĐÂY
                     Credentials = new NetworkCredential("your-email@gmail.com", "your-app-password"),
                     EnableSsl = true,
                 };
@@ -356,15 +378,13 @@ namespace AnFoodAPI.Controllers
             catch (Exception ex)
             {
                 Console.WriteLine("Lỗi gửi mail: " + ex.Message);
-                // Trả về false nếu chưa cấu hình email để code không chết
-                // Trong môi trường test, ta có thể tạm return true và in OTP ra console
                 Console.WriteLine($"[DEBUG MODE] OTP gửi đến {toEmail}: {body}"); 
                 return false; 
             }
         }
     }
 
-    // DTOs (Có thể tách ra file riêng trong folder DTOs cho gọn)
+    // DTOs
     public class UserLoginModel { public string Email { get; set; } public string MatKhau { get; set; } }
     public class DangKyRequest { public string TenNguoiDung { get; set; } public string Email { get; set; } public string MatKhau { get; set; } public string SoDienThoai { get; set; } public string DiaChi { get; set; } }
     public class ResetPassModel { public string Email { get; set; } public string Otp { get; set; } public string MatKhauMoi { get; set; } }
