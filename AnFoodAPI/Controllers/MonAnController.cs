@@ -74,85 +74,94 @@ namespace AnFoodAPI.Controllers
         }
 
         // =============================================================
-        // 2. LẤY DANH SÁCH THEO DANH MỤC
+        // 2. LẤY DANH SÁCH THEO DANH MỤC (ĐÃ FIX TỐI ƯU HÓA N+1)
         // =============================================================
         [HttpGet("ByCategory/{maDm}")]
         public async Task<ActionResult<IEnumerable<MonAnDTO>>> GetMonAnsByCategory(int maDm)
         {
-            // Bước 1: Lấy danh sách thô an toàn
-            var monAns = await _context.MonAns
-                .Include(m => m.HinhAnhMonAns)
-                .Include(m => m.MaDanhMucNavigation)
+            // Ép MySQL xử lý toàn bộ logic đếm tồn kho, tính sao trung bình bằng 1 câu Query
+            var data = await _context.MonAns
                 .Where(m => m.MaDanhMuc == maDm && m.TrangThai != "ngung_ban" && !m.IsDeleted)
+                .Select(m => new
+                {
+                    m.MaMon,
+                    m.TenMon,
+                    m.Gia,
+                    m.GiaVon,
+                    m.MoTa,
+                    m.HinhAnh,
+                    HinhAnhFirst = m.HinhAnhMonAns.FirstOrDefault() != null ? m.HinhAnhMonAns.FirstOrDefault().DuongDan : null,
+                    m.MaDanhMuc,
+                    m.DaBan,
+                    TonKho = m.ChiTietKhos.Where(k => k.NgayHetHan > DateTime.Now).Sum(k => (int?)k.SoLuongHienTai),
+                    NgayHetHan = m.ChiTietKhos.Where(k => k.SoLuongHienTai > 0).OrderBy(k => k.NgayHetHan).Select(k => k.NgayHetHan).FirstOrDefault(),
+                    DiemTB = m.DanhGias.Average(d => (double?)d.SoSao)
+                })
                 .ToListAsync();
 
-            var list = new List<MonAnDTO>();
-            
-            // Bước 2: Dùng vòng lặp để EF không phải dịch lệnh SQL phức tạp
-            foreach (var m in monAns)
+            // Ánh xạ sang DTO trên RAM (nhanh gấp trăm lần gọi DB trong vòng lặp)
+            var list = data.Select(m => new MonAnDTO
             {
-                int tonKho = await _context.ChiTietKhos.Where(k => k.MaMon == m.MaMon && k.NgayHetHan > DateTime.Now).SumAsync(k => (int?)k.SoLuongHienTai) ?? 0;
-                var han = await _context.ChiTietKhos.Where(k => k.MaMon == m.MaMon && k.SoLuongHienTai > 0).OrderBy(k => k.NgayHetHan).Select(k => k.NgayHetHan).FirstOrDefaultAsync();
-                double diem = await _context.DanhGias.Where(d => d.MaMon == m.MaMon).AverageAsync(d => (double?)d.SoSao) ?? 0.0;
-
-                list.Add(new MonAnDTO
-                {
-                    MaMon = m.MaMon,
-                    TenMon = m.TenMon,
-                    GiaBan = m.Gia,
-                    GiaVon = m.GiaVon ?? 0,
-                    SoLuong = tonKho,
-                    NgayHetHan = han,
-                    MoTa = m.MoTa,
-                    HinhAnh = !string.IsNullOrEmpty(m.HinhAnh) ? m.HinhAnh : m.HinhAnhMonAns?.FirstOrDefault()?.DuongDan,
-                    HinhAnhMonAns = m.HinhAnhMonAns?.ToList(),
-                    DaBan = m.DaBan ?? 0,
-                    DiemDanhGia = Math.Round(diem, 1)
-                });
-            }
+                MaMon = m.MaMon,
+                TenMon = m.TenMon,
+                GiaBan = m.Gia,
+                GiaVon = m.GiaVon ?? 0,
+                SoLuong = m.TonKho ?? 0,
+                NgayHetHan = m.NgayHetHan,
+                MoTa = m.MoTa,
+                HinhAnh = !string.IsNullOrEmpty(m.HinhAnh) ? m.HinhAnh : m.HinhAnhFirst,
+                MaDanhMuc = m.MaDanhMuc,
+                DaBan = m.DaBan ?? 0,
+                DiemDanhGia = m.DiemTB.HasValue ? Math.Round(m.DiemTB.Value, 1) : 0.0
+            }).ToList();
 
             return Ok(list);
         }
 
         // =============================================================
-        // 3. LẤY TOÀN BỘ (Dùng cho Admin & Inventory)
+        // 3. LẤY TOÀN BỘ (Dùng cho Admin & Inventory) (ĐÃ FIX TỐI ƯU HÓA N+1)
         // =============================================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<MonAnDTO>>> GetAll()
         {
-            // Bước 1: Lấy danh sách thô
-            var monAns = await _context.MonAns
-                .Include(m => m.HinhAnhMonAns)
-                .Include(m => m.MaDanhMucNavigation)
+            // Gom dữ liệu thần tốc bằng 1 câu lệnh duy nhất
+            var data = await _context.MonAns
                 .Where(m => !m.IsDeleted)
+                .Select(m => new
+                {
+                    m.MaMon,
+                    m.TenMon,
+                    m.Gia,
+                    m.GiaVon,
+                    m.MoTa,
+                    m.HinhAnh,
+                    HinhAnhFirst = m.HinhAnhMonAns.FirstOrDefault() != null ? m.HinhAnhMonAns.FirstOrDefault().DuongDan : null,
+                    m.MaDanhMuc,
+                    TenDanhMuc = m.MaDanhMucNavigation != null ? m.MaDanhMucNavigation.TenDanhMuc : "Chưa phân loại",
+                    m.DaBan,
+                    TonKho = m.ChiTietKhos.Where(k => k.NgayHetHan > DateTime.Now).Sum(k => (int?)k.SoLuongHienTai),
+                    NgayHetHan = m.ChiTietKhos.Where(k => k.SoLuongHienTai > 0).OrderBy(k => k.NgayHetHan).Select(k => k.NgayHetHan).FirstOrDefault(),
+                    DiemTB = m.DanhGias.Average(d => (double?)d.SoSao)
+                })
                 .OrderByDescending(m => m.MaMon)
                 .ToListAsync();
 
-            var list = new List<MonAnDTO>();
-
-            // Bước 2: Xử lý an toàn từng món ăn
-            foreach (var m in monAns)
+            // Xử lý nốt phần còn lại cực nhanh trên bộ nhớ C#
+            var list = data.Select(m => new MonAnDTO
             {
-                int tonKho = await _context.ChiTietKhos.Where(k => k.MaMon == m.MaMon && k.NgayHetHan > DateTime.Now).SumAsync(k => (int?)k.SoLuongHienTai) ?? 0;
-                var han = await _context.ChiTietKhos.Where(k => k.MaMon == m.MaMon && k.SoLuongHienTai > 0).OrderBy(k => k.NgayHetHan).Select(k => k.NgayHetHan).FirstOrDefaultAsync();
-                double diem = await _context.DanhGias.Where(d => d.MaMon == m.MaMon).AverageAsync(d => (double?)d.SoSao) ?? 0.0;
-
-                list.Add(new MonAnDTO
-                {
-                    MaMon = m.MaMon,
-                    TenMon = m.TenMon,
-                    GiaBan = m.Gia, 
-                    GiaVon = m.GiaVon ?? 0, 
-                    SoLuong = tonKho,
-                    NgayHetHan = han,
-                    MoTa = m.MoTa,
-                    HinhAnh = !string.IsNullOrEmpty(m.HinhAnh) ? m.HinhAnh : m.HinhAnhMonAns?.FirstOrDefault()?.DuongDan,
-                    MaDanhMuc = m.MaDanhMuc,
-                    TenDanhMuc = m.MaDanhMucNavigation?.TenDanhMuc ?? "Chưa phân loại",
-                    DaBan = m.DaBan ?? 0,
-                    DiemDanhGia = Math.Round(diem, 1)
-                });
-            }
+                MaMon = m.MaMon,
+                TenMon = m.TenMon,
+                GiaBan = m.Gia,
+                GiaVon = m.GiaVon ?? 0,
+                SoLuong = m.TonKho ?? 0,
+                NgayHetHan = m.NgayHetHan,
+                MoTa = m.MoTa,
+                HinhAnh = !string.IsNullOrEmpty(m.HinhAnh) ? m.HinhAnh : m.HinhAnhFirst,
+                MaDanhMuc = m.MaDanhMuc,
+                TenDanhMuc = m.TenDanhMuc,
+                DaBan = m.DaBan ?? 0,
+                DiemDanhGia = m.DiemTB.HasValue ? Math.Round(m.DiemTB.Value, 1) : 0.0
+            }).ToList();
 
             return Ok(list);
         }
@@ -288,7 +297,6 @@ namespace AnFoodAPI.Controllers
             var chuoiKetNoi = _context.Database.GetConnectionString();
             try
             {
-                // Thử ép hệ thống mở cửa vào Database
                 await _context.Database.OpenConnectionAsync();
                 await _context.Database.CloseConnectionAsync();
 
@@ -301,7 +309,6 @@ namespace AnFoodAPI.Controllers
             }
             catch (Exception ex)
             {
-                // Nếu văng lỗi, bắt nó ói ra hết nguyên nhân
                 return StatusCode(500, new 
                 { 
                     TrangThai = "🔴 ĐỎ LÒM - ĐỨT CÁP DATABASE!",
