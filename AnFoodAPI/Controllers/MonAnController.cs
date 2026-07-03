@@ -74,12 +74,11 @@ namespace AnFoodAPI.Controllers
         }
 
         // =============================================================
-        // 2. LẤY DANH SÁCH THEO DANH MỤC (ĐÃ FIX TỐI ƯU HÓA N+1)
+        // 2. LẤY DANH SÁCH THEO DANH MỤC (ĐÃ FIX BUILD LỖI CS1061)
         // =============================================================
         [HttpGet("ByCategory/{maDm}")]
         public async Task<ActionResult<IEnumerable<MonAnDTO>>> GetMonAnsByCategory(int maDm)
         {
-            // Ép MySQL xử lý toàn bộ logic đếm tồn kho, tính sao trung bình bằng 1 câu Query
             var data = await _context.MonAns
                 .Where(m => m.MaDanhMuc == maDm && m.TrangThai != "ngung_ban" && !m.IsDeleted)
                 .Select(m => new
@@ -93,13 +92,13 @@ namespace AnFoodAPI.Controllers
                     HinhAnhFirst = m.HinhAnhMonAns.FirstOrDefault() != null ? m.HinhAnhMonAns.FirstOrDefault().DuongDan : null,
                     m.MaDanhMuc,
                     m.DaBan,
-                    TonKho = m.ChiTietKhos.Where(k => k.NgayHetHan > DateTime.Now).Sum(k => (int?)k.SoLuongHienTai),
-                    NgayHetHan = m.ChiTietKhos.Where(k => k.SoLuongHienTai > 0).OrderBy(k => k.NgayHetHan).Select(k => k.NgayHetHan).FirstOrDefault(),
-                    DiemTB = m.DanhGias.Average(d => (double?)d.SoSao)
+                    // Gọi thẳng _context để tính toán thay vì dùng Navigation Property
+                    TonKho = _context.ChiTietKhos.Where(k => k.MaMon == m.MaMon && k.NgayHetHan > DateTime.Now).Sum(k => (int?)k.SoLuongHienTai),
+                    NgayHetHan = _context.ChiTietKhos.Where(k => k.MaMon == m.MaMon && k.SoLuongHienTai > 0).OrderBy(k => k.NgayHetHan).Select(k => k.NgayHetHan).FirstOrDefault(),
+                    DiemTB = _context.DanhGias.Where(d => d.MaMon == m.MaMon).Average(d => (double?)d.SoSao)
                 })
                 .ToListAsync();
 
-            // Ánh xạ sang DTO trên RAM (nhanh gấp trăm lần gọi DB trong vòng lặp)
             var list = data.Select(m => new MonAnDTO
             {
                 MaMon = m.MaMon,
@@ -119,12 +118,11 @@ namespace AnFoodAPI.Controllers
         }
 
         // =============================================================
-        // 3. LẤY TOÀN BỘ (Dùng cho Admin & Inventory) (ĐÃ FIX TỐI ƯU HÓA N+1)
+        // 3. LẤY TOÀN BỘ (Dùng cho Admin & Inventory) (ĐÃ FIX BUILD LỖI CS1061)
         // =============================================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<MonAnDTO>>> GetAll()
         {
-            // Gom dữ liệu thần tốc bằng 1 câu lệnh duy nhất
             var data = await _context.MonAns
                 .Where(m => !m.IsDeleted)
                 .Select(m => new
@@ -139,14 +137,14 @@ namespace AnFoodAPI.Controllers
                     m.MaDanhMuc,
                     TenDanhMuc = m.MaDanhMucNavigation != null ? m.MaDanhMucNavigation.TenDanhMuc : "Chưa phân loại",
                     m.DaBan,
-                    TonKho = m.ChiTietKhos.Where(k => k.NgayHetHan > DateTime.Now).Sum(k => (int?)k.SoLuongHienTai),
-                    NgayHetHan = m.ChiTietKhos.Where(k => k.SoLuongHienTai > 0).OrderBy(k => k.NgayHetHan).Select(k => k.NgayHetHan).FirstOrDefault(),
-                    DiemTB = m.DanhGias.Average(d => (double?)d.SoSao)
+                    // Gọi thẳng _context để tính toán thay vì dùng Navigation Property
+                    TonKho = _context.ChiTietKhos.Where(k => k.MaMon == m.MaMon && k.NgayHetHan > DateTime.Now).Sum(k => (int?)k.SoLuongHienTai),
+                    NgayHetHan = _context.ChiTietKhos.Where(k => k.MaMon == m.MaMon && k.SoLuongHienTai > 0).OrderBy(k => k.NgayHetHan).Select(k => k.NgayHetHan).FirstOrDefault(),
+                    DiemTB = _context.DanhGias.Where(d => d.MaMon == m.MaMon).Average(d => (double?)d.SoSao)
                 })
                 .OrderByDescending(m => m.MaMon)
                 .ToListAsync();
 
-            // Xử lý nốt phần còn lại cực nhanh trên bộ nhớ C#
             var list = data.Select(m => new MonAnDTO
             {
                 MaMon = m.MaMon,
