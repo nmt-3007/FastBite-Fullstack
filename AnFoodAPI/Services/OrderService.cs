@@ -24,7 +24,9 @@ namespace AnFoodAPI.Services
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                // 1. Tạo Đơn Hàng
+                // ============================================================
+                // 1. TẠO ĐƠN HÀNG (TRẠNG THÁI CHUẨN ENUM)
+                // ============================================================
                 var donHang = new DonHang
                 {
                     MaNguoiDung = req.MaNguoiDung,
@@ -34,7 +36,7 @@ namespace AnFoodAPI.Services
                     GhiChu = req.GhiChu,
                     TongTien = req.TongTien,
                     NgayDat = DateTime.UtcNow.AddHours(7),
-                    TrangThai = "cho_xu_ly",
+                    TrangThai = "cho_xu_ly", // CHUẨN MYSQL
                     PhiVanChuyen = req.PhiVanChuyen,
                     MaVoucher = req.MaVoucher,
                     SoTienGiam = req.SoTienGiam
@@ -55,20 +57,24 @@ namespace AnFoodAPI.Services
 
                 await _context.SaveChangesAsync();
 
-                // 2. Ghi lịch sử trạng thái ban đầu
+                // ============================================================
+                // 2. GHI LỊCH SỬ TRẠNG THÁI BAN ĐẦU
+                // ============================================================
                 var lichSuTrangThai = new LichSuTrangThaiDonHang
                 {
                     MaDonHang = donHang.MaDonHang,
-                    TrangThai = "cho_xu_ly",
+                    TrangThai = "cho_xu_ly", // CHUẨN MYSQL
                     ThoiGian = DateTime.UtcNow.AddHours(7), 
                     GhiChu = "Đơn hàng mới được tạo trên hệ thống"
                 };
                 _context.LichSuTrangThaiDonHangs.Add(lichSuTrangThai);
 
-                // 3. Lưu Chi Tiết Đơn Hàng & TRỪ TỒN KHO FIFO
+                // ============================================================
+                // 3. LƯU CHI TIẾT ĐƠN HÀNG & TRỪ TỒN KHO FIFO
+                // ============================================================
                 foreach (var item in req.ChiTietDonHangs)
                 {
-                    // 👇 LẤY TÊN MÓN ĐỂ BÁO LỖI CHO ĐẸP
+                    // LẤY TÊN MÓN ĐỂ BÁO LỖI CHO ĐẸP
                     var monAn = await _context.MonAns.FindAsync(item.MaMonAn);
                     string tenMonHienThi = monAn != null ? monAn.TenMon : $"Món ăn (Mã {item.MaMonAn})";
 
@@ -89,7 +95,7 @@ namespace AnFoodAPI.Services
 
                     int tongTonKho = cacLoHang.Sum(k => k.SoLuongHienTai ?? 0);
                     
-                    // 👇 THÔNG BÁO RÕ RÀNG KHI HẾT HÀNG / HẾT DATE
+                    // THÔNG BÁO RÕ RÀNG KHI HẾT HÀNG / HẾT DATE
                     if (tongTonKho < soLuongCanBan)
                         return (false, $"Rất tiếc! Món '{tenMonHienThi}' hiện chỉ còn {tongTonKho} phần (hoặc đã hết HSD). Sếp vui lòng xóa món này khỏi giỏ hàng nhé!", null);
 
@@ -121,7 +127,9 @@ namespace AnFoodAPI.Services
                     _context.LichSuKhos.Add(lichSuKho);
                 }
 
-                // 4. Lưu Thông Tin Thanh Toán
+                // ============================================================
+                // 4. LƯU THÔNG TIN THANH TOÁN (ĐÃ FIX LỖI ENUM TRANGTHAI)
+                // ============================================================
                 var phuongThuc = (req.GhiChu != null && req.GhiChu.ToUpper().Contains("VNPAY")) ? "VNPAY" : "COD";
                 var thanhToan = new ThanhToan
                 {
@@ -129,11 +137,16 @@ namespace AnFoodAPI.Services
                     SoTien = (double)req.TongTien, 
                     NgayThanhToan = DateTime.UtcNow.AddHours(7),
                     PhuongThuc = phuongThuc,
-                    TrangThai = (phuongThuc == "VNPAY") ? "success" : "pending"
+                    
+                    // 🌟 ĐÃ FIX: Chỉ gán chữ "cho" theo đúng chuẩn Database
+                    // (Nếu là VNPay, hệ thống sẽ tự động cập nhật lại thành "da_thanh_toan" sau khi khách quét mã xong)
+                    TrangThai = "cho" 
                 };
                 _context.ThanhToans.Add(thanhToan);
 
-                // 5. Xóa Giỏ Hàng
+                // ============================================================
+                // 5. XÓA GIỎ HÀNG
+                // ============================================================
                 var gioHangs = await _context.GioHangs.Where(g => g.MaNguoiDung == req.MaNguoiDung).ToListAsync();
                 if (gioHangs.Any())
                 {

@@ -23,7 +23,25 @@ namespace AnFoodAPI.Controllers
         }
 
         // ============================================================
+        // 0. HÀM HELPER: CHUYỂN TIẾNG VIỆT SANG CHUẨN ENUM MYSQL
+        // Ngăn chặn tuyệt đối lỗi "Data truncated for column 'trang_thai'"
+        // ============================================================
+        private string ChuanHoaTrangThai(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return "cho_xu_ly";
+            
+            var str = input.Trim().ToLower();
+            if (str == "chờ xử lý" || str == "pending" || str == "cho_xu_ly") return "cho_xu_ly";
+            if (str == "đang giao" || str == "delivering" || str == "dang_giao") return "dang_giao";
+            if (str == "hoàn thành" || str == "đã giao" || str == "completed" || str == "hoan_thanh") return "hoan_thanh";
+            if (str == "đã hủy" || str == "hủy" || str == "cancelled" || str == "huy") return "huy";
+            
+            return "cho_xu_ly"; // Mặc định an toàn
+        }
+
+        // ============================================================
         // 1. TẠO ĐƠN HÀNG (TRỪ KHO FIFO + GHI LỊCH SỬ TRẠNG THÁI)
+        // (Lưu ý: Lỗi ENUM tạo đơn nằm trong OrderService, sếp xem hướng dẫn bên dưới nhé)
         // ============================================================
         [HttpPost("TaoDon")]
         public async Task<IActionResult> TaoDon([FromBody] TaoDonRequest req)
@@ -90,11 +108,14 @@ namespace AnFoodAPI.Controllers
         }
 
         // ============================================================
-        // 3. CẬP NHẬT TRẠNG THÁI ĐƠN HÀNG BỞI ADMIN
+        // 3. CẬP NHẬT TRẠNG THÁI ĐƠN HÀNG BỞI ADMIN (ĐÃ BỌC THÉP ENUM)
         // ============================================================
         [HttpPut("CapNhatTrangThai/{id}")]
         public async Task<IActionResult> UpdateStatus(int id, [FromBody] string trangThaiMoi)
         {
+            // 🌟 Ép Frontend gửi tiếng Việt hay tiếng Anh đều về chuẩn ENUM của DB
+            string trangThaiDbChuan = ChuanHoaTrangThai(trangThaiMoi);
+
             var donHang = await _context.DonHangs
                 .Include(d => d.ChiTietDonHangs)
                 .FirstOrDefaultAsync(d => d.MaDonHang == id);
@@ -102,23 +123,24 @@ namespace AnFoodAPI.Controllers
             if (donHang == null) return NotFound(new { message = "Không tìm thấy đơn hàng!" });
 
             string trangThaiCu = donHang.TrangThai;
-            if (trangThaiCu == trangThaiMoi) return Ok(new { message = "Trạng thái không thay đổi." });
+            if (trangThaiCu == trangThaiDbChuan) return Ok(new { message = "Trạng thái không thay đổi." });
 
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                donHang.TrangThai = trangThaiMoi;
+                donHang.TrangThai = trangThaiDbChuan;
 
                 var lichSu = new LichSuTrangThaiDonHang
                 {
                     MaDonHang = id,
-                    TrangThai = trangThaiMoi,
+                    TrangThai = trangThaiDbChuan,
                     ThoiGian = DateTime.UtcNow.AddHours(7), 
-                    GhiChu = $"Chuyển trạng thái từ [{trangThaiCu}] sang [{trangThaiMoi}]"
+                    GhiChu = $"Chuyển trạng thái từ [{trangThaiCu}] sang [{trangThaiDbChuan}]"
                 };
                 _context.LichSuTrangThaiDonHangs.Add(lichSu);
 
-                if ((trangThaiMoi.ToLower() == "da_huy" || trangThaiMoi.ToLower() == "dahuy") && trangThaiCu.ToLower() != "da_huy")
+                // Nếu hủy đơn thì hoàn kho
+                if (trangThaiDbChuan == "huy" && trangThaiCu != "huy")
                 {
                     foreach (var item in donHang.ChiTietDonHangs)
                     {
@@ -199,7 +221,7 @@ namespace AnFoodAPI.Controllers
         }
 
         // ============================================================
-        // 5. KHÁCH HÀNG TỰ HỦY ĐƠN
+        // 5. KHÁCH HÀNG TỰ HỦY ĐƠN (ĐÃ BỌC THÉP ENUM)
         // ============================================================
         [HttpPost("KhachHangHuyDon")]
         public async Task<IActionResult> KhachHangHuyDon([FromBody] HuyDonRequest req)
@@ -216,6 +238,7 @@ namespace AnFoodAPI.Controllers
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                // 🌟 Gán chữ "huy" (Tuyệt đối không gán "Đã hủy" có dấu)
                 donHang.TrangThai = "huy";
                 donHang.LyDoHuy = req.LyDoHuy;
 
@@ -267,7 +290,7 @@ namespace AnFoodAPI.Controllers
         }
 
         // ============================================================
-        // 6. KIỂM TRA TỒN KHO TRƯỚC KHI VÀO TRANG THANH TOÁN (PRE-CHECK)
+        // 6. KIỂM TRA TỒN KHO TRƯỚC KHI VÀO TRANG THANH TOÁN
         // ============================================================
         [HttpPost("KiemTraTonKho")]
         public async Task<IActionResult> KiemTraTonKho([FromBody] List<ChiTietDonHangRequest> req)

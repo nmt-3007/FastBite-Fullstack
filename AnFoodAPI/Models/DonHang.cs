@@ -19,7 +19,9 @@ namespace AnFoodAPI.Models
         public decimal? TongTien { get; set; }
 
         [Column("trang_thai")]
+        [MaxLength(50)]
         public string? TrangThai { get; set; }
+        
 
         [Column("ma_dia_chi")]
         public int? MaDiaChi { get; set; }
