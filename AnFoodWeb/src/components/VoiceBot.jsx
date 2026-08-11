@@ -56,16 +56,17 @@ const VoiceBot = () => {
   };
 
   // 🌟 THAY ĐỔI LỚN: Gửi Text xuống Backend bằng axiosClient
+  // Gửi Text xuống Backend và nhận tư vấn
   const sendToBackend = async (text) => {
     setIsLoading(true);
     try {
-      // Dùng axiosClient thay cho fetch localhost để chạy mượt trên Railway
+      // Dùng axiosClient thay cho fetch localhost để chạy mượt trên Vercel/Railway
       const response = await axiosClient.post('/VoiceBot/ask', {
-        maNguoiDung: 1, // Tạm thời hardcode, sau này sếp lấy ID user đang login nhét vào đây nhé
+        maNguoiDung: 1, // Chỗ này sau sếp thay bằng ID user đang đăng nhập nhé
         userText: text
       });
       
-      // Tùy vào cách sếp setup axiosClient (có interceptor hay không), data thường nằm thẳng ở response hoặc response.data
+      // axiosClient tự động bóc tách JSON, nên mình lấy trực tiếp data
       const aiText = response.aiText || response.data?.aiText; 
 
       if (aiText) {
@@ -81,7 +82,6 @@ const VoiceBot = () => {
     }
     setIsLoading(false);
   };
-
   // Trình duyệt tự động đọc văn bản thành giọng nói (Text-to-Speech)
   const speakText = (text) => {
     if ('speechSynthesis' in window) {
