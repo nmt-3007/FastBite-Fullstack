@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// 🌟 THÊM IMPORT: Import cấu hình gọi API của dự án để tự động nhận domain Railway
-// (Lưu ý: Sếp kiểm tra lại đường dẫn này cho khớp với thư mục dự án nhé, thường là '../api/axiosClient' hoặc '../../api/axiosClient')
 import axiosClient from '../api/axiosClient';
 
 const VoiceBot = () => {
@@ -55,18 +53,15 @@ const VoiceBot = () => {
     }
   };
 
-  // 🌟 THAY ĐỔI LỚN: Gửi Text xuống Backend bằng axiosClient
   // Gửi Text xuống Backend và nhận tư vấn
   const sendToBackend = async (text) => {
     setIsLoading(true);
     try {
-      // Dùng axiosClient thay cho fetch localhost để chạy mượt trên Vercel/Railway
       const response = await axiosClient.post('/VoiceBot/ask', {
-        maNguoiDung: 1, // Chỗ này sau sếp thay bằng ID user đang đăng nhập nhé
+        maNguoiDung: 1, 
         userText: text
       });
       
-      // axiosClient tự động bóc tách JSON, nên mình lấy trực tiếp data
       const aiText = response.aiText || response.data?.aiText; 
 
       if (aiText) {
@@ -77,11 +72,15 @@ const VoiceBot = () => {
       }
 
     } catch (error) {
-      console.error("Lỗi kết nối Backend:", error);
-      setAiResponse("Dạ đường truyền đang bị gián đoạn, sếp thử lại sau nhé!");
+      console.error("CHI TIẾT LỖI:", error);
+      
+      // 🌟 ĐÃ SỬA: Bắt chính xác lỗi từ Backend trả về và in thẳng ra màn hình
+      const errorMsg = error.response?.data?.message || error.message || "Lỗi không xác định từ Server";
+      setAiResponse(`BÁO LỖI: ${errorMsg}`);
     }
     setIsLoading(false);
   };
+
   // Trình duyệt tự động đọc văn bản thành giọng nói (Text-to-Speech)
   const speakText = (text) => {
     if ('speechSynthesis' in window) {
@@ -134,7 +133,7 @@ const VoiceBot = () => {
         )}
 
         {aiResponse && (
-          <div className="bg-orange-50 p-3 rounded-lg border border-orange-200 text-orange-800">
+          <div className={`p-3 rounded-lg border ${aiResponse.startsWith("BÁO LỖI:") ? 'bg-red-50 border-red-200 text-red-800' : 'bg-orange-50 border-orange-200 text-orange-800'}`}>
             <strong>FastBite AI:</strong> {aiResponse}
           </div>
         )}

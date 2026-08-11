@@ -1,9 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System.Text;
-using System.Text.Json;
 using AnFoodAPI.Models;
 using AnFoodAPI.DTOs;
+using System.Text;
+using System.Text.Json;
 
 namespace AnFoodAPI.Controllers
 {
@@ -11,8 +10,7 @@ namespace AnFoodAPI.Controllers
     [ApiController]
     public class VoiceBotController : ControllerBase
     {
-        // Nhớ đổi AnshopDbContext thành tên DbContext thật của sếp trong file AnshopDbContext.cs nhé
-        private readonly AnshopDbContext _context; 
+        private readonly AnshopDbContext _context;
         private readonly IConfiguration _configuration;
         private readonly HttpClient _httpClient;
 
@@ -26,38 +24,32 @@ namespace AnFoodAPI.Controllers
         [HttpPost("ask")]
         public async Task<IActionResult> AskVoiceBot([FromBody] VoiceChatRequest request)
         {
-            if (string.IsNullOrEmpty(request.UserText))
-                return BadRequest(new { message = "Không nhận được giọng nói." });
-
             try
             {
-                // 1. Cấu hình Prompt
-                string prompt = $@"
-Bạn là nhân viên tư vấn giọng nói của nhà hàng FastBite.
-Luật: Trả lời CỰC KỲ NGẮN GỌN (dưới 40 từ), thân thiện, dễ nghe để hệ thống đọc ra loa. Xưng hô 'Dạ', 'nhà hàng', 'bạn'.
-Câu hỏi của khách: {request.UserText}";
+                // 1. Tự động lấy Key từ Railway Variable hoặc appsettings.json
+                string apiKey = Environment.GetEnvironmentVariable("GeminiAI__ApiKey") 
+                                ?? _configuration["GeminiAI:ApiKey"];
 
-                // 2. Gọi API Gemini qua HTTP thuần (Không lo lỗi thư viện)
-                string apiKey = "SẾP_DÁN_API_KEY_GEMINI_VÀO_ĐÂY"; 
-                string apiUrl = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
+                if (string.IsNullOrEmpty(apiKey))
+                    return BadRequest(new { message = "LỖI BACKEND: Chưa cấu hình API Key Gemini trên Railway." });
 
-                var payload = new
-                {
-                    contents = new[]
-                    {
-                        new { parts = new[] { new { text = prompt } } }
-                    }
+                string prompt = $"Bạn là nhân viên nhà hàng FastBite. Trả lời ngắn gọn dưới 40 từ. Khách hỏi: {request.UserText}";
+
+                // 2. Chốt cứng Model chuẩn: gemini-1.5-flash
+                string apiUrl = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={apiKey}";
+
+                var payload = new {
+                    contents = new[] { new { parts = new[] { new { text = prompt } } } }
                 };
 
                 var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
                 var response = await _httpClient.PostAsync(apiUrl, content);
-                
-                if (!response.IsSuccessStatusCode)
-                    return StatusCode((int)response.StatusCode, "Lỗi kết nối đến Google Gemini.");
+                string responseString = await response.Content.ReadAsStringAsync();
 
-                var responseString = await response.Content.ReadAsStringAsync();
-                
-                // Parse JSON thủ công để lấy Text
+                // 3. Nếu Google Gemini chửi, quăng thẳng lỗi đó về Frontend
+                if (!response.IsSuccessStatusCode)
+                    return BadRequest(new { message = $"LỖI GEMINI: {responseString}" });
+
                 using var jsonDoc = JsonDocument.Parse(responseString);
                 var aiResponseText = jsonDoc.RootElement
                     .GetProperty("candidates")[0]
@@ -65,32 +57,19 @@ Câu hỏi của khách: {request.UserText}";
                     .GetProperty("parts")[0]
                     .GetProperty("text").GetString();
 
-                // 3. Tận dụng bảng LichSuChat của sếp để lưu vết (Lưu 2 dòng: Khách hỏi & AI trả lời)
-var chatKhachHang = new LichSuChat
-{
-    MaNguoiDung = request.MaNguoiDung,
-    NoiDung = request.UserText,
-    NguoiGui = "User", // SỬA CHỖ NÀY
-    ThoiGian = DateTime.Now
-};
+                // 4. Lưu Database
+                var chatKhachHang = new LichSuChat { MaNguoiDung = request.MaNguoiDung, NoiDung = request.UserText, NguoiGui = "User", ThoiGian = DateTime.Now };
+                var chatVoiceBot = new LichSuChat { MaNguoiDung = request.MaNguoiDung, NoiDung = aiResponseText, NguoiGui = "Bot", ThoiGian = DateTime.Now };
 
-var chatVoiceBot = new LichSuChat
-{
-    MaNguoiDung = request.MaNguoiDung,
-    NoiDung = aiResponseText,
-    NguoiGui = "Bot", // SỬA CHỖ NÀY
-    ThoiGian = DateTime.Now
-};
-
-                _context.LichSuChats.AddRange(chatKhachHang, chatVoiceBot); // Ghi 2 record
+                _context.LichSuChats.AddRange(chatKhachHang, chatVoiceBot);
                 await _context.SaveChangesAsync();
 
-                // 4. Trả về cho Frontend đọc
                 return Ok(new VoiceChatResponse { AiText = aiResponseText });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Lỗi xử lý Voice Bot: " + ex.Message });
+                // 5. Bắt mọi lỗi Exception (Code, DB...)
+                return StatusCode(500, new { message = $"LỖI SERVER TỰ BẮT: {ex.Message}" });
             }
         }
     }
