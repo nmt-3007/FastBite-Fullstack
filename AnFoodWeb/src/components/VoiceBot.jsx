@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+// 🌟 THÊM IMPORT: Import cấu hình gọi API của dự án để tự động nhận domain Railway
+// (Lưu ý: Sếp kiểm tra lại đường dẫn này cho khớp với thư mục dự án nhé, thường là '../api/axiosClient' hoặc '../../api/axiosClient')
+import axiosClient from '../../api/axiosClient'; 
 
 const VoiceBot = () => {
   const [isListening, setIsListening] = useState(false);
@@ -37,7 +40,7 @@ const VoiceBot = () => {
   // Bật/Tắt Mic
   const toggleListen = () => {
     if (!recognition) {
-      alert("Trình duyệt của bạn không hỗ trợ thu âm. Vui lòng dùng Chrome/Edge.");
+      alert("Trình duyệt của bạn không hỗ trợ thu âm. Vui lòng dùng Chrome hoặc Edge.");
       return;
     }
 
@@ -52,24 +55,29 @@ const VoiceBot = () => {
     }
   };
 
-  // Gửi Text xuống Backend và nhận tư vấn
+  // 🌟 THAY ĐỔI LỚN: Gửi Text xuống Backend bằng axiosClient
   const sendToBackend = async (text) => {
     setIsLoading(true);
     try {
-      // Đổi port 5000 thành port Backend ASP.NET thực tế của sếp nếu cần
-      const response = await fetch('http://localhost:5000/api/VoiceBot/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ maNguoiDung: 1, userText: text }) 
+      // Dùng axiosClient thay cho fetch localhost để chạy mượt trên Railway
+      const response = await axiosClient.post('/VoiceBot/ask', {
+        maNguoiDung: 1, // Tạm thời hardcode, sau này sếp lấy ID user đang login nhét vào đây nhé
+        userText: text
       });
       
-      const data = await response.json();
-      setAiResponse(data.aiText);
-      speakText(data.aiText); // Gọi hàm phát âm thanh
+      // Tùy vào cách sếp setup axiosClient (có interceptor hay không), data thường nằm thẳng ở response hoặc response.data
+      const aiText = response.aiText || response.data?.aiText; 
+
+      if (aiText) {
+          setAiResponse(aiText);
+          speakText(aiText); // Gọi hàm phát âm thanh
+      } else {
+          setAiResponse("Xin lỗi, tôi không nhận được phản hồi từ hệ thống.");
+      }
 
     } catch (error) {
       console.error("Lỗi kết nối Backend:", error);
-      setAiResponse("Xin lỗi, tôi đang không thể kết nối tới máy chủ.");
+      setAiResponse("Dạ đường truyền đang bị gián đoạn, sếp thử lại sau nhé!");
     }
     setIsLoading(false);
   };
