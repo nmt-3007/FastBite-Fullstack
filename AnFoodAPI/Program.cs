@@ -12,7 +12,6 @@ var builder = WebApplication.CreateBuilder(args);
 // ==========================================
 // 1. CẤU HÌNH DATABASE (ÉP NHẬN RAILWAY)
 // ==========================================
-// 👉 ĐÃ FIX: Bắt buộc C# tìm biến 'DB_CONNECTION' trên Railway trước, nếu không có mới dùng localhost ở nhà
 var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION") 
                        ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
@@ -31,6 +30,7 @@ builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
 builder.Services.AddSingleton<IRecommendationService, RecommendationService>();
+builder.Services.AddHttpClient<IWeatherService, WeatherService>();
 
 // ==========================================
 // 3. CẤU HÌNH JWT AUTHENTICATION
@@ -58,13 +58,12 @@ builder.Services.AddAuthentication(options =>
 });
 
 // ==========================================
-// 4. CẤU HÌNH CORS (ĐÃ MỞ KHÓA CHO VERCEL)
+// 4. CẤU HÌNH CORS (ĐÃ GỘP LÀM 1, CHUẨN 100%)
 // ==========================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReact", policy =>
     {
-        // Cho phép MỌI domain (Vercel, Localhost) gọi vào mà không bị chặn
         policy.SetIsOriginAllowed(_ => true) 
               .AllowAnyMethod()
               .AllowAnyHeader()
@@ -75,7 +74,6 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        // Lệnh này giúp ngắt vòng lặp vô tận khi lấy dữ liệu có khóa ngoại
         options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     });
 
@@ -86,8 +84,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "AnFoodAPI", Version = "v1" });
-
-    // DÒNG NÀY LÀ THẦN DƯỢC CHỮA LỖI TRẮNG MÀN HÌNH ĐÂY Ạ
     c.CustomSchemaIds(type => type.FullName);
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -111,39 +107,17 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-
-
-builder.Services.AddHttpClient<IWeatherService, WeatherService>();
-// Thêm đoạn này vào Program.cs
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowReact", policy =>
-    {
-        policy
-            .WithOrigins(
-                "https://fast-bite-fullstack.vercel.app",
-                "http://localhost:5173"
-            )
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
-    });
-});
 // ==========================================
 // 6. KHỞI CHẠY APP
 // ==========================================
 var app = builder.Build();
 
-// ==========================================
-// 🚀 TỰ ĐỘNG UPDATE DATABASE KHI CHẠY (CHUẨN PRODUCTION)
-// ==========================================
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     try
     {
         var context = services.GetRequiredService<AnshopDbContext>();
-        // Lệnh này sẽ tự động kết nối vào MySQL trên Railway và tạo toàn bộ bảng!
         context.Database.Migrate(); 
     }
     catch (Exception ex)
@@ -152,16 +126,15 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "Lỗi nghiêm trọng khi tự động tạo Database: {Message}", ex.Message);
     }
 }
-// ==========================================
 
-// Đã đưa Swagger ra ngoài if để khi Deploy lên mạng vẫn dùng được
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseStaticFiles();
 
-// Kích hoạt CORS
+// Kích hoạt CORS (Phải đứng trước Auth)
 app.UseCors("AllowReact");
+
 app.UseAuthentication(); 
 app.UseAuthorization();  
 
