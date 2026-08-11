@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 // 🌟 THÊM IMPORT: Import cấu hình gọi API của dự án để tự động nhận domain Railway
 // (Lưu ý: Sếp kiểm tra lại đường dẫn này cho khớp với thư mục dự án nhé, thường là '../api/axiosClient' hoặc '../../api/axiosClient')
-import axiosClient from '../../api/axiosClient'; 
+import axiosClient from '../api/axiosClient';
 
 const VoiceBot = () => {
   const [isListening, setIsListening] = useState(false);
