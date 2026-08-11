@@ -11,6 +11,8 @@ import axiosClient from '../../api/axiosClient';
 import { getImageUrl } from '../../utils/imageHelper';
 import AiRecommendedList from '../../components/AiRecommendedList'; 
 import ProductCard from '../../components/ProductCard'; 
+// 🌟 THÊM COMPONENT VOICE BOT VÀO ĐÂY
+import VoiceBot from '../../components/VoiceBot'; 
 
 import { 
   FaTruck, FaArrowRight, FaMagic, 
@@ -145,6 +147,9 @@ const Home = ({ addToCart }) => {
   const navigate = useNavigate();
   const [foods, setFoods] = useState([]);
   const [banners, setBanners] = useState([]);
+
+  // 🌟 KHAI BÁO STATE QUẢN LÝ VOICE BOT TRỢ LÝ ẢO
+  const [showVoiceBot, setShowVoiceBot] = useState(false);
   
   // 👉 1. ĐÃ XÓA state reviews sạch sẽ
 
@@ -219,7 +224,7 @@ const Home = ({ addToCart }) => {
   };
 
   return (
-    <div style={{ backgroundColor: '#fff' }}>
+    <div style={{ backgroundColor: '#fff', position: 'relative' }}>
       <ToastContainer />
       
       {/* 🎯 1. HERO SECTION (Banner To) */}
@@ -323,6 +328,28 @@ const Home = ({ addToCart }) => {
 
       {/* 🎯 5. FEATURES */}
       <FeaturesSection />
+
+      {/* 🌟 THÊM KHU VỰC: TRỢ LÝ GIỌNG NÓI AI NỔI GÓC DƯỚI PHẢI */}
+      <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end">
+        {/* Khung chat VoiceBot sẽ bung lên khi bấm nút */}
+        {showVoiceBot && (
+          <div className="mb-4 animate-fade-in-up">
+            <VoiceBot />
+          </div>
+        )}
+        
+        {/* Nút bấm hình Tròn nổi lơ lửng */}
+        <button 
+          onClick={() => setShowVoiceBot(!showVoiceBot)}
+          className={`p-4 rounded-full shadow-2xl flex items-center justify-center text-3xl transition-transform hover:scale-110 z-50 ${
+            showVoiceBot ? 'bg-gray-700 text-white' : 'bg-gradient-to-r from-orange-400 to-orange-600 text-white animate-bounce'
+          }`}
+          title="Trợ lý giọng nói FastBite"
+        >
+          {showVoiceBot ? '✖' : '🎙️'}
+        </button>
+      </div>
+
     </div>
   );
 };
