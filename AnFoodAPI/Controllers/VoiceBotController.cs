@@ -27,8 +27,8 @@ namespace AnFoodAPI.Controllers
             try
             {
                 // 1. Tự động lấy Key từ Railway Variable hoặc appsettings.json
-                string apiKey = Environment.GetEnvironmentVariable("GeminiAI__ApiKey") 
-                                ?? _configuration["GeminiAI:ApiKey"];
+                string apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEYS") 
+                    ?? _configuration["GeminiAI:ApiKey"];
 
                 if (string.IsNullOrEmpty(apiKey))
                     return BadRequest(new { message = "LỖI BACKEND: Chưa cấu hình API Key Gemini trên Railway." });
