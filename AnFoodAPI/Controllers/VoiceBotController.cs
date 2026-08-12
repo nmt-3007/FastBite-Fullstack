@@ -36,7 +36,7 @@ namespace AnFoodAPI.Controllers
                 string prompt = $"Bạn là nhân viên nhà hàng FastBite. Trả lời ngắn gọn dưới 40 từ. Khách hỏi: {request.UserText}";
 
                 // 2. Chốt cứng Model chuẩn: gemini-1.5-flash
-                string apiUrl = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={apiKey}";
+                string apiUrl = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
 
                 var payload = new {
                     contents = new[] { new { parts = new[] { new { text = prompt } } } }
